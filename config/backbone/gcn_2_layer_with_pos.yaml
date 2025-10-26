@@ -1,0 +1,8 @@
+gnn_cls: gjepa.models.backbones.PositionalCustomGNN
+conv: gcn
+in_channels: ${dataset.in_channels}
+pos_dim: ${pos_encoding.dim}
+hidden_dim: 128
+out_dim: ${.hidden_dim}
+num_layers: 2
+disable_pos: false

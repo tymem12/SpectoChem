@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - ../dataset@dataset: ogbn-arxiv
+  - ../backbone@backbone: gcn_3_layer
+  - ../training@training: training
+  - override ../training@training: training
+  - _self_
+
+baseline_name: gbt
+
+training:
+  max_epochs: 100
+  learning_rate: 1e-3
+  weight_decay: 1e-5
+  batch_size: 512
+  scheduler_config:
+    warmup_epochs: 10
+    max_epochs: ${..max_epochs}
+
+drop_edge_pa: 0.2
+drop_feat_px: 0.0

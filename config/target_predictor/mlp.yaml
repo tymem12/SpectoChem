@@ -1,0 +1,9 @@
+name: mlp
+kwargs:
+  hidden_dim: ${model.backbone.out_dim}
+  pos_dim: ${pos_encoding.dim}
+  mlp_kwargs:
+    num_layers: 2
+    hidden_channels: ${..hidden_dim}
+    out_channels: ${..hidden_dim}
+    norm: batch_norm

@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+  - ../dataset@dataset: COMP6
+  - ../backbone@backbone: schnet
+  - ../training@training: training
+  - ../pos_encoding@pos_encoding: soap
+  - override ../training@training: training
+  - _self_
+
+baseline_name: gbt-postpool
+
+training:
+  max_epochs: 50
+  learning_rate: 5e-4
+  weight_decay: 1e-5
+  batch_size: 64
+  scheduler_config:
+    warmup_epochs: 3
+    max_epochs: ${..max_epochs}
+
+drop_edge_pa: 0.1
+drop_feat_px: 0.2
+std: 1

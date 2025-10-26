@@ -1,0 +1,20 @@
+experiment_name: ???
+experiment_dir: data/experiments/${.experiment_name}
+use_tensorboard: true
+use_wandb: false
+wandb_project: graph-jepa
+
+random_seed: 2137
+learning_rate: 1e-3
+weight_decay: 5e-4
+batch_size: 64
+min_epochs: 10
+max_epochs: 1000
+early_stopping: null
+checkpoint:
+  monitor: val_${dataset.main_metric}
+  mode: ${dataset.metric_mode}
+save_representations: false
+scheduler_config:
+  warmup_epochs: 100
+  max_epochs: ${..max_epochs}

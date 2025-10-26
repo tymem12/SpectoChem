@@ -1,0 +1,31 @@
+# Source: https://arxiv.org/pdf/2102.06514.pdf
+defaults:
+  - ../dataset@dataset: ogbn-arxiv
+  - ../backbone@backbone: gcn_3_layer
+  - ../training@training: training
+  - override ../training@training: training
+  - _self_
+
+baseline_name: bgrl
+
+predictor:
+  hidden_channels: 256
+  act: prelu
+  act_kwargs:
+    num_parameters: 1
+  norm: null
+  dropout: 0.0
+
+training:
+  max_epochs: 100
+  learning_rate: 1e-2
+  weight_decay: 1e-5
+  batch_size: 512
+  scheduler_config:
+    warmup_epochs: 10
+    max_epochs: ${..max_epochs}
+
+drop_edge_p1: 0.6
+drop_feat_p1: 0.0
+drop_edge_p2: 0.6
+drop_feat_p2: 0.0

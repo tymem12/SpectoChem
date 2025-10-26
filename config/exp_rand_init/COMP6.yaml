@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - ../dataset@dataset: COMP6
+  - ../backbone@backbone: gcn_2_layer_with_pos
+  - _self_
+
+random_seed: ???
+experiment_dir: ???
+
+batch_size: 128

@@ -1,0 +1,40 @@
+from abc import ABC
+from typing import Literal
+
+from torch import Tensor, nn
+
+from gjepa.config import TaskType
+from gjepa.metrics.regression import get_default_regression_metrics
+from gjepa.models.predictors import PredictorBase
+from gjepa.models.predictors.losses import get_regression_loss
+
+class RegressorBase(PredictorBase, ABC):
+    def __init__(self, out_channels: int, task_type: Literal["regression", "multiregression"], y_std=None):
+        if task_type == "multiregression":
+            kwargs = dict(
+                reduce_mean=True
+            )
+        else:
+            kwargs = {}
+
+        metrics = get_default_regression_metrics(task_type, out_channels, y_std=y_std, **kwargs)
+        loss = get_regression_loss(task_type)
+        super().__init__(loss, metrics)
+
+        self.out_channels = out_channels
+
+    def predict(self, x: Tensor) -> Tensor:
+        return self(x)
+
+    def logits_to_proba(self, x: Tensor) -> Tensor:
+        return x
+
+
+class LinearRegressor(RegressorBase):
+    def __init__(self, in_channels: int, out_channels: int, task_type: TaskType, y_std=None):
+        super().__init__(out_channels, task_type, y_std=y_std)
+        self.linear = nn.Linear(in_channels, out_channels)
+
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.linear(x)

@@ -1,0 +1,31 @@
+# Source: https://github.com/nerdslab/bgrl/blob/main/config/coauthor-cs.cfg
+defaults:
+  - ../dataset@dataset: Coauthor-CS
+  - ../backbone@backbone: gcn_2_layer
+  - ../training@training: training
+  - override ../training@training: training
+  - _self_
+
+baseline_name: bgrl
+
+predictor:
+  hidden_channels: 512
+  act: prelu
+  act_kwargs:
+    num_parameters: 1
+  norm: null
+  dropout: 0.0
+
+training:
+  max_epochs: 100
+  learning_rate: 1e-5
+  weight_decay: 1e-5
+  batch_size: 128
+  scheduler_config:
+    warmup_epochs: 10
+    max_epochs: ${..max_epochs}
+
+drop_edge_p1: 0.3
+drop_feat_p1: 0.3
+drop_edge_p2: 0.2
+drop_feat_p2: 0.4

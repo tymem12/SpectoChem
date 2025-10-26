@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - ../dataset@dataset: Coauthor-CS
+  - ../backbone@backbone: gcn_2_layer
+  - ../training@training: training
+  - override ../training@training: training
+  - _self_
+
+baseline_name: gbt
+
+training:
+  max_epochs: 100
+  learning_rate: 5e-4
+  weight_decay: 1e-5
+  batch_size: 128
+  scheduler_config:
+    warmup_epochs: 10
+    max_epochs: ${..max_epochs}
+
+drop_edge_pa: 0.5
+drop_feat_px: 0.1

@@ -1,0 +1,21 @@
+name: QMUG
+root_dir: data/datasets
+pre_transforms: {}
+transforms: 
+  AddEdgesAndDistances:
+    cutoff: 5.0
+in_channels: 10
+out_channels: 1
+task_type: regression
+main_metric: MAE
+metric_mode: min
+split_ratios: [0.8, 0.1]
+target_standarization: false
+additional_loading_params: 
+  x_mode: "one_hot"
+  y_index: 1
+  max_entries: 150000
+  y_key: "formation_energies"
+  standardize_y: true
+  cutoff: 5.0
+

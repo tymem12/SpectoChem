@@ -1,0 +1,10 @@
+name: spherical_harmonics
+file: data/pos_encodings_graph_level/${dataset.name}/${.name}.pt
+dim: 16
+transforms:
+  SphericalHarmonicsPE:
+    attr_name: positional_encoding
+    l_max: 3
+    center: true
+    include_input: false
+    eps: 1e-8

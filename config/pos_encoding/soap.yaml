@@ -1,0 +1,13 @@
+name: soap
+file: data/pos_encodings_graph_level/${dataset.name}/${.name}.pt
+dim: 220
+transforms:
+  SOAPPE:
+    attr_name: positional_encoding
+    l_max: 3
+    num_radial: 10
+    r_max: 5.0
+    use_cutoff: true
+    center: false
+    use_existing_edges: false
+    include_input: false

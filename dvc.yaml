@@ -1,0 +1,495 @@
+vars:
+  - gjepa/params.py
+
+stages:
+  download_dataset:
+    matrix:
+      dataset: ${datasets}
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/download_dataset.py
+      dataset=${item.dataset}
+      random_seed=${seeds.0}
+    deps:
+      - experiments/scripts/download_dataset.py
+      - config/dataset/${item.dataset}.yaml
+    outs:
+      - data/datasets/${item.dataset}/
+
+  compute_positional_encodings:
+    matrix:
+      dataset: ${datasets}
+      pos_encoding: [ "laplacian", "random_walk", "anchor", "all_ones" ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/compute_positional_encodings.py
+      dataset=${item.dataset}
+      pos_encoding=${item.pos_encoding}
+      random_seed=${seeds.0}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/compute_positional_encodings.py
+      - config/pos_encoding.yaml
+      - config/pos_encoding/${item.pos_encoding}.yaml
+    outs:
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+
+  compute_node2vec_embedding:
+    matrix:
+      dataset: ${datasets}
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/compute_node2vec_embedding.py
+      dataset=${item.dataset}
+      embedding_dim=8
+      max_epochs=200
+      random_seed=${seeds.0}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/compute_node2vec_embedding.py
+      - config/dataset/${item.dataset}.yaml
+    outs:
+      - data/pos_encodings/${item.dataset}/node2vec.pt
+      - data/node2vec_metrics/${item.dataset}.json
+
+  compute_node_similarity_matrix:
+    matrix:
+      dataset: ${ablation_datasets}
+      feature_name: [ "node_attribute", "random_gcn" ]
+      similarity_measure: [ "cosine" ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/compute_node_similarity_matrix.py
+      --seed ${seeds.0}
+      --dataset-config config/dataset/${item.dataset}.yaml
+      --feature-name ${item.feature_name}
+      --similarity-measure ${item.similarity_measure}
+      --output-file data/similarity_matrix/${item.dataset}/${item.feature_name}_${item.similarity_measure}.pt
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/compute_node_similarity_matrix.py
+      - config/dataset/${item.dataset}.yaml
+    outs:
+      - data/similarity_matrix/${item.dataset}/${item.feature_name}_${item.similarity_measure}.pt
+
+  compute_node_similarity_matrix_pos_enc:
+    matrix:
+      dataset: ${ablation_datasets}
+      pos_enc: [ "laplacian", "random_walk", "node2vec" ]
+      similarity_measure: [ "cosine" ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/compute_node_similarity_matrix.py
+      --seed ${seeds.0}
+      --dataset-config config/dataset/${item.dataset}.yaml
+      --feature-name pos_enc
+      --pos-enc-file data/pos_encodings/${item.dataset}/${item.pos_enc}.pt
+      --similarity-measure ${item.similarity_measure}
+      --output-file data/similarity_matrix/${item.dataset}/pos_enc_${item.pos_enc}_${item.similarity_measure}.pt
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/compute_node_similarity_matrix.py
+      - data/pos_encodings/${item.dataset}/${item.pos_enc}.pt
+      - config/dataset/${item.dataset}.yaml
+    outs:
+      - data/similarity_matrix/${item.dataset}/pos_enc_${item.pos_enc}_${item.similarity_measure}.pt
+
+  prepare_uniform_and_label_node_similarity_matrix:
+    matrix:
+      dataset: ${ablation_datasets}
+      feature_name: [ "uniform", "label" ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/compute_node_similarity_matrix.py
+      --seed ${seeds.0}
+      --dataset-config config/dataset/${item.dataset}.yaml
+      --feature-name ${item.feature_name}
+      --output-file data/similarity_matrix/${item.dataset}/${item.feature_name}.pt
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/compute_node_similarity_matrix.py
+      - config/dataset/${item.dataset}.yaml
+    outs:
+      - data/similarity_matrix/${item.dataset}/${item.feature_name}.pt
+
+  # Baselines
+  train_supervised:
+    matrix:
+      dataset: ${datasets}
+      seed: ${seeds}
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      model=supervised
+      training.experiment_name=supervised/${item.dataset}
+      training.random_seed=${item.seed}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/model/supervised.yaml
+    outs:
+      - data/experiments/supervised/${item.dataset}/lightning_logs/version_${item.seed}
+
+  ablation_supervised_gps:
+    matrix:
+      dataset: [ Cora, WikiCS, Amazon-CS ]
+      backbone: [ gps ]
+      disable_pos: [ true, false ]
+      mpnn: [ null, gcn ]
+      pos_encoding: [ random_walk ]
+      seed: ${seeds}
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      model=supervised
+      backbone@model.backbone=${item.backbone}
+      pos_encoding=${item.pos_encoding}
+      model.backbone.mpnn_conv=${item.mpnn}
+      model.backbone.disable_pos=${item.disable_pos}
+      training.experiment_name=supervised/${item.dataset}_${item.backbone}_${item.pos_encoding}_${item.mpnn}_${item.disable_pos}
+      training.random_seed=${item.seed}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/model/supervised.yaml
+      - config/backbone/${item.backbone}.yaml
+      - config/pos_encoding/${item.pos_encoding}.yaml
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+    outs:
+      - data/experiments/supervised/gps_study/${item.dataset}_${item.backbone}_${item.pos_encoding}_${item.mpnn}_${item.disable_pos}/lightning_logs/version_${item.seed}
+
+  train_ssl_baseline:
+    matrix:
+      baseline: [ bgrl, gbt ]
+      dataset: ${datasets}
+      seed: ${seeds}
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train_ssl_baseline.py
+      --config-path ../../config/exp_${item.baseline}
+      --config-name ${item.dataset}
+      training.random_seed=${item.seed}
+      training.experiment_dir=data/experiments/ssl_${item.baseline}/${item.dataset}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train_ssl_baseline.py
+      - config/exp_${item.baseline}/${item.dataset}.yaml
+    outs:
+      - data/experiments/ssl_${item.baseline}/${item.dataset}/lightning_logs/version_${item.seed}
+
+  eval_rand_init:
+    matrix:
+      dataset: ${datasets}
+      seed: ${seeds}
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/eval_rand_init.py
+      --config-name ${item.dataset}
+      random_seed=${item.seed}
+      experiment_dir=data/experiments/ssl_rand_init/${item.dataset}/lightning_logs/version_${item.seed}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/eval_rand_init.py
+      - config/exp_rand_init/${item.dataset}.yaml
+    outs:
+      - data/experiments/ssl_rand_init/${item.dataset}/lightning_logs/version_${item.seed}
+
+
+  # G-JEPA
+  train_gjepa:
+    matrix:
+      dataset: ${datasets}
+      seed: ${seeds}
+      pos_encoding: [ "node2vec", "anchor" ]
+      model: [ "gjepa_node_node", "gjepa_subgraph_subgraph" ]
+      num_targets: [ 8 ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      pos_encoding=${item.pos_encoding}
+      model=${item.model}
+      model.num_targets=${item.num_targets}
+      training.experiment_name=gjepa/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}
+      training.random_seed=${item.seed}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/model/${item.model}.yaml
+      - config/pos_encoding/${item.pos_encoding}.yaml
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+    outs:
+      - data/experiments/gjepa/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}/lightning_logs/version_${item.seed}
+
+  compare_subgraph_method:
+    matrix:
+      dataset: [ "WikiCS" ]
+      seed: [ 2137, 42, 7351 ]
+      pos_encoding: [ "random_walk", "all_ones" ]
+      model: [ "gjepa_subgraph_subgraph" ]
+      num_targets: [ 8 ]
+      subgraph_method: [ "cluster", "k_hop" ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      pos_encoding=${item.pos_encoding}
+      model=${item.model}
+      model.num_targets=${item.num_targets}
+      training.experiment_name=compare_subgraph_method/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.subgraph_method}
+      training.random_seed=${item.seed}
+      model.subgraph_method=${item.subgraph_method}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/model/${item.model}.yaml
+      - config/pos_encoding/${item.pos_encoding}.yaml
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+    outs:
+      - data/experiments/compare_subgraph_method/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.subgraph_method}/lightning_logs/version_${item.seed}
+
+  ablation_clustering:
+    matrix:
+      dataset: ${ablation_datasets}
+      seed: ${seeds}
+      pos_encoding: [ "node2vec", "random_walk", "laplacian" ]
+      model: [ "gjepa_subgraph_subgraph" ]
+      num_targets: [ 4, 8 ]
+      num_partitions: [ 500, 1_000, 2_500 ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      pos_encoding=${item.pos_encoding}
+      model=${item.model}
+      model.num_targets=${item.num_targets}
+      training.experiment_name=ablation_clustering/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.num_partitions}
+      training.random_seed=${item.seed}
+      dataset.num_partitions=${item.num_partitions}
+      model.subgraph_method=cluster
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/model/${item.model}.yaml
+      - config/pos_encoding/${item.pos_encoding}.yaml
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+    outs:
+      - data/experiments/ablation_clustering/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.num_partitions}/lightning_logs/version_${item.seed}
+
+  ablation_mlp_target_predictor_size:
+    matrix:
+      dataset: ${ablation_datasets}
+      seed: ${seeds}
+      pos_encoding: [ "node2vec" ]
+      model: [ "gjepa_node_node" ]
+      num_targets: [ 8 ]
+      num_target_predictor_layers: [ 1, 2, 4, 8, 12, 16 ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      pos_encoding=${item.pos_encoding}
+      model=${item.model}
+      model.num_targets=${item.num_targets}
+      training.experiment_name=ablation_target_predictor_size/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.num_target_predictor_layers}
+      training.random_seed=${item.seed}
+      model.target_predictor.kwargs.mlp_kwargs.num_layers=${item.num_target_predictor_layers}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/model/${item.model}.yaml
+      - config/pos_encoding/${item.pos_encoding}.yaml
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+    outs:
+      - data/experiments/ablation_target_predictor_size/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.num_target_predictor_layers}/lightning_logs/version_${item.seed}
+
+  ablation_transformer_target_predictor_size:
+    matrix:
+      dataset: ${ablation_datasets}
+      seed: ${seeds}
+      pos_encoding: [ "node2vec" ]
+      model: [ "gjepa_subgraph_subgraph" ]
+      num_targets: [ 8 ]
+      num_target_predictor_layers: [ 1, 2, 4, 8, 12 ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      pos_encoding=${item.pos_encoding}
+      model=${item.model}
+      model.num_targets=${item.num_targets}
+      training.experiment_name=ablation_target_predictor_size/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.num_target_predictor_layers}
+      training.random_seed=${item.seed}
+      model.target_predictor.kwargs.num_layers=${item.num_target_predictor_layers}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/model/${item.model}.yaml
+      - config/pos_encoding/${item.pos_encoding}.yaml
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+    outs:
+      - data/experiments/ablation_target_predictor_size/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.num_target_predictor_layers}/lightning_logs/version_${item.seed}
+
+
+  ablation_pos_enc:
+    matrix:
+      dataset: ${ablation_datasets}
+      seed: ${seeds}
+      pos_encoding: [ "random_walk", "laplacian", "node2vec" ]
+      model: [ "gjepa_node_node" ]
+      num_targets: [ 8 ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      pos_encoding=${item.pos_encoding}
+      model=${item.model}
+      model.num_targets=${item.num_targets}
+      training.experiment_name=ablation_pos_enc/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}
+      training.random_seed=${item.seed}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/model/${item.model}.yaml
+      - config/pos_encoding/${item.pos_encoding}.yaml
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+    outs:
+      - data/experiments/ablation_pos_enc/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}/lightning_logs/version_${item.seed}
+
+  ablation_num_targets:
+    matrix:
+      dataset: ${ablation_datasets}
+      seed: ${seeds}
+      pos_encoding: [ "node2vec" ]
+      model: [ "gjepa_node_node" ]
+      num_targets: [ 2, 4, 8, 16 ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      pos_encoding=${item.pos_encoding}
+      model=${item.model}
+      model.num_targets=${item.num_targets}
+      training.experiment_name=ablation_num_targets/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}
+      training.random_seed=${item.seed}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/model/${item.model}.yaml
+      - config/pos_encoding/${item.pos_encoding}.yaml
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+    outs:
+      - data/experiments/ablation_num_targets/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}/lightning_logs/version_${item.seed}
+
+  ablation_sampling_strategy:
+    matrix:
+      dataset: ${ablation_datasets}
+      seed: ${seeds}
+      pos_encoding: [ "node2vec" ]
+      model: [ "gjepa_node_node" ]
+      num_targets: [ 8 ]
+      similarity_matrix: [
+        "uniform",
+        "node_attribute_cosine",
+        "random_gcn_cosine",
+        "pos_enc_laplacian_cosine",
+        "pos_enc_random_walk_cosine",
+        "label",
+      ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      pos_encoding=${item.pos_encoding}
+      model=${item.model}
+      model.num_targets=${item.num_targets}
+      model.similarity_matrix_file=data/similarity_matrix/${item.dataset}/${item.similarity_matrix}.pt
+      training.experiment_name=ablation_sampling_strategy/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.similarity_matrix}
+      training.random_seed=${item.seed}
+    deps:
+      - data/datasets/${item.dataset}/
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/pos_encoding/laplacian.yaml
+      - config/model/${item.model}.yaml
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+      - data/similarity_matrix/${item.dataset}/${item.similarity_matrix}.pt
+    outs:
+      - data/experiments/ablation_sampling_strategy/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.similarity_matrix}/lightning_logs/version_${item.seed}
+
+  ablation_overlap_strategy:
+    matrix:
+      dataset: ${ablation_datasets}
+      seed: ${seeds}
+      pos_encoding: [ "node2vec" ]
+      model: [ "gjepa_node_node" ]
+      num_targets: [ 8 ]
+      context_target_overlap_strategy: [ "ignore", "remove", "mask" ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/train.py
+      +exp=${item.dataset}
+      pos_encoding=${item.pos_encoding}
+      model=${item.model}
+      model.num_targets=${item.num_targets}
+      model.context_target_overlap_strategy=${item.context_target_overlap_strategy}
+      training.experiment_name=ablation_overlap/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.context_target_overlap_strategy}
+      training.random_seed=${item.seed}
+    deps:
+      - experiments/scripts/train.py
+      - config/exp/${item.dataset}.yaml
+      - config/dataset/${item.dataset}.yaml
+      - config/model/${item.model}.yaml
+      - config/pos_encoding/${item.pos_encoding}.yaml
+      - data/pos_encodings/${item.dataset}/${item.pos_encoding}.pt
+    outs:
+      - data/experiments/ablation_overlap/${item.dataset}_${item.pos_encoding}_${item.model}_${item.num_targets}_${item.context_target_overlap_strategy}/lightning_logs/version_${item.seed}
+
+  summarize_results:
+    matrix:
+      experiment_group: [
+        "supervised",
+        "gjepa",
+        "compare_subgraph_method",
+        "ablation_clustering",
+        "ablation_target_predictor_size",
+        "ablation_pos_enc",
+        "ablation_num_targets",
+        "ablation_sampling_strategy",
+        "ablation_overlap",
+        "ssl_rand_init",
+        "ssl_bgrl",
+        "ssl_gbt",
+      ]
+    cmd: >-
+      PYTHONPATH=. python experiments/scripts/summarize_experiments.py
+      --root-dir data/experiments/${item.experiment_group}
+      --main-metric-only
+    deps:
+      - data/experiments/${item.experiment_group}
+      - experiments/scripts/summarize_experiments.py
+    outs:
+      - data/experiments/${item.experiment_group}_report.csv
+      - data/experiments/${item.experiment_group}_report.md:
+          cache: false
+
+  combine_results:
+    cmd: >-
+      python experiments/scripts/combine_results.py
+      -rf data/experiments/ssl_rand_init_report.md
+      -rf data/experiments/supervised_report.md
+      -rf data/experiments/ssl_bgrl_report.md
+      -rf data/experiments/ssl_gbt_report.md
+      -rf data/experiments/gjepa_report.md
+      --target-file data/experiments/ssl_combined_report.md
+    deps:
+      - experiments/scripts/combine_results.py
+      - data/experiments/ssl_rand_init_report.md
+      - data/experiments/supervised_report.md
+      - data/experiments/ssl_bgrl_report.md
+      - data/experiments/ssl_gbt_report.md
+    outs:
+      - data/experiments/ssl_combined_report.md:
+          cache: false

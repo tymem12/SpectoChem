@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - override /training: training
+  - override /dataset: ogbn-arxiv
+  - override /pos_encoding: null
+  - override /model: ???
+  - override /backbone@model.backbone: gcn_3_layer
+
+
+training:
+  batch_size: 512

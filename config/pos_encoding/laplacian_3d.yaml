@@ -1,0 +1,10 @@
+name: laplacian_3d
+file: data/pos_encodings_graph_level/${dataset.name}/${.name}.pt
+dim: ${.transforms.AddLaplacianPE.k}
+transforms:
+  AddLaplacianPE:
+    k: 8
+    attr_name: positional_encoding
+    cutoff: 5.0
+    max_num_neighbors: 64
+

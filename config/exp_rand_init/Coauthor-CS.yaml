@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - ../dataset@dataset: Coauthor-CS
+  - ../backbone@backbone: gcn_2_layer
+  - _self_
+
+random_seed: ???
+experiment_dir: ???
+
+batch_size: 128

@@ -1,0 +1,7 @@
+name: anchor
+file: data/pos_encodings/${dataset.name}/${.name}.pt
+dim: ${.transforms.AnchorBasedPE.num_anchors}
+transforms:
+  AnchorBasedPE:
+    num_anchors: 10
+    anchor_sampling: random

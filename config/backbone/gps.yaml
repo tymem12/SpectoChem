@@ -1,0 +1,11 @@
+gnn_cls: gjepa.models.backbones.GraphGPS
+mpnn_conv: gcn
+in_channels: ${dataset.in_channels}
+hidden_dim: 256
+num_layers: 2
+pos_dim: ${pos_encoding.dim}
+gps_kwargs:
+  heads: 4
+  dropout: 0.0
+  attn_type: multihead
+disable_pos: false

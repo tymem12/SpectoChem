@@ -1,0 +1,8 @@
+name: anchor
+file: data/pos_encodings/${dataset.name}/${.name}.pt
+transforms:
+  RBFAnchorPE:
+    num_centers: 2
+    gamma: None
+    attr_name: positional_encoding
+    use_fps: True

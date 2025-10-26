@@ -1,0 +1,7 @@
+name: random_walk
+file: data/pos_encodings/${dataset.name}/${.name}.pt
+dim: ${.transforms.AddRandomWalkPE.walk_length}
+transforms:
+  AddRandomWalkPE:
+    walk_length: 8
+    attr_name: pos

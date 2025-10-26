@@ -1,0 +1,7 @@
+name: dummy_ones
+file: data/pos_encodings_graph_level/${dataset.name}/${.name}.pt
+dim_size: 10 
+transforms:
+  DummyOnesPE:
+    attr_name: positional_encoding
+    dim_size: 8

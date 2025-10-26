@@ -1,0 +1,19 @@
+name: roman_empire
+root_dir: data/datasets
+num_neighbors: [ 10, 10, 10 ]
+num_hops: 3
+in_channels: 300
+out_channels: 18
+task_type: multiclass
+main_metric: Accuracy
+metric_mode: max
+pre_transforms:
+  # split sizes based on https://arxiv.org/abs/2302.11640
+  RandomNodeSplit:
+    split: train_rest
+    num_splits: 10
+    num_val: 0.25
+    num_test: 0.25
+transforms:
+  NormalizeFeatures: { }
+num_partitions: 2_200 # used only when using subgraph_method = cluster, =~(#nodes / 10)

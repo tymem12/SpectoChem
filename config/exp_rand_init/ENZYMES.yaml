@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - ../dataset@dataset: ENZYMES
+  - ../backbone@backbone: gcn_2_layer
+  - _self_
+
+random_seed: ???
+experiment_dir: ???
+
+batch_size: 128

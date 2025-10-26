@@ -1,0 +1,10 @@
+name: fourier_freq
+file: data/pos_encodings_graph_level/${dataset.name}/${.name}.pt
+dim: 20
+transforms:
+  FourierFrequencyPE:
+    attr_name: positional_encoding
+    num_freqs: 10
+    sigma: 1.0
+    include_input: false
+    random: true

@@ -1,0 +1,18 @@
+name: Coauthor-CS
+root_dir: data/datasets
+num_neighbors: [ 10, 10 ]
+num_hops: 2
+in_channels: 6805
+out_channels: 15
+task_type: multiclass
+main_metric: F1
+metric_mode: max
+pre_transforms:
+  RandomNodeSplit:
+    split: train_rest
+    num_splits: 10
+    num_val: 0.1
+    num_test: 0.8
+transforms:
+  NormalizeFeatures: { }
+num_partitions: 1_800 # used only when using subgraph_method = cluster, =~(#nodes / 10)

@@ -1,0 +1,6 @@
+defaults:
+  - training: training
+  - dataset: ???
+  - pos_encoding: null
+  - model: ???
+  - _self_

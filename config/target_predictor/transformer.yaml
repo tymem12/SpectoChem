@@ -1,0 +1,8 @@
+name: transformer
+kwargs:
+  pos_dim: ${pos_encoding.dim}
+  hidden_dim: ${model.backbone.out_dim}
+  num_layers: 2
+  transformer_kwargs:
+    nhead: 4
+    dim_feedforward: ${..hidden_dim}

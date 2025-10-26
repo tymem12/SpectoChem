@@ -1,0 +1,16 @@
+name: QM9
+root_dir: data/datasets/QM9
+pre_transforms: {}
+transforms:
+  SelectTargets:
+    num_targets: 12
+  QM9EnergyToMeV:
+    y_key: y
+in_channels: 11
+out_channels: 12
+task_type: multiregression
+main_metric: MAE
+metric_mode: min
+target_standarization: true
+split_ratios: [0.8, 0.1]
+additional_loading_params: {}

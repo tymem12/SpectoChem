@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - override /training: training
+  - override /dataset: COMP6
+  - override /pos_encoding: null
+  - override /model: ???
+  - override /backbone@model.backbone: gcn_2_layer

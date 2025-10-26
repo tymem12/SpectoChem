@@ -1,0 +1,11 @@
+name: nerf
+file: data/pos_encodings_graph_level/${dataset.name}/${.name}.pt
+dim: 60
+transforms:
+  NerfPE:
+    attr_name: positional_encoding
+    num_frequencies: 10
+    min_freq_exp: 0.0
+    max_freq_exp: 9.0
+    include_input: false
+    normalize: true

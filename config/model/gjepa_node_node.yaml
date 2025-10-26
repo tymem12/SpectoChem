@@ -1,0 +1,17 @@
+defaults:
+  - /backbone: ???
+  - /target_predictor: mlp
+
+name: gjepa
+type: gjepa.models.GJEPANodeModel
+ipe: 1.0
+ipe_scale: 1.0
+ema: [ 0.996, 1.0 ]
+context_extractor_type: node
+target_extractor_type: node
+context_target_overlap_strategy: remove
+transforms: { }
+num_targets: 8
+similarity_matrix_file: null
+reload_dataloaders_every_n_epochs: 1
+subgraph_method: k_hop

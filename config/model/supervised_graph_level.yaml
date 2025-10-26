@@ -1,0 +1,8 @@
+defaults:
+  - /backbone: ???
+  - _self_
+
+name: supervised
+type: gjepa.models.SupervisedGraphLevelGNN
+transforms: { }
+reload_dataloaders_every_n_epochs: 0

@@ -1,0 +1,16 @@
+defaults:
+  - /backbone: ???
+  - /target_predictor: ???
+
+name: gjepa
+type: gjepa.models.GJEPAGraphLevelModel
+ipe: 1.0
+ipe_scale: 1.0
+ema: [ 0.996, 1.0 ]
+context_extractor_type: mean_pool
+target_extractor_type: mean_pool
+context_ratio: 0.6
+target_ratio: 0.2
+transforms: { }
+reload_dataloaders_every_n_epochs: 1
+sampling_method: random

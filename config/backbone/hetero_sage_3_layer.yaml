@@ -1,0 +1,13 @@
+# SAGE conv designed to be close to the one used in heterophilous dataset benchmark: https://arxiv.org/abs/2302.11640
+# NOTE: this is not an exact architecture equivalent
+gnn_cls: gjepa.models.backbones.CustomSAGE
+in_channels: ${dataset.in_channels}
+hidden_channels: [512, 512, 512]
+out_dim: ${.hidden_channels[1]}
+act: gelu
+dropout: 0.2
+norm: layer_norm
+weights_standarization: false
+plain_last: false
+residual: true
+aggr: mean

@@ -1,0 +1,41 @@
+# Source: https://github.com/nerdslab/bgrl/blob/main/config/wiki-cs.cfg
+defaults:
+  - ../dataset@dataset: Amazon-Photo
+  - ../backbone@backbone: gcn_2_layer
+  - ../training@training: training
+  - override ../training@training: training
+  - _self_
+
+baseline_name: gigamae
+
+predictor:
+  hidden_channels: 512
+  act: relu
+  norm: batch_norm
+  dropout: 0.0
+  plain_last: true
+
+training:
+  max_epochs: 100
+  learning_rate: 0.015
+  weight_decay: 0
+  batch_size: 128
+  scheduler_config:
+    lrdec_1: 0.8
+    lrdec_2: 100
+
+struct_emb_path: data/pos_encodings/${dataset.name}/node2vec.pt
+feat_pca_emb_path: data/feature_pca/${dataset.name}/feat_proj_with_ratio_${.feat_pca_ratio}.pt
+feat_pca_ratio: 0.8
+mask_node_prob: 0.8
+mask_edge_prob: 0.3
+tau: 0.7
+l1_e: 4
+l2_e: 1
+l12_e: 1
+l1_f: 1
+l2_f: 4
+l12_f: 1
+l1_b: 2
+l2_b: 2
+l12_b: -1
