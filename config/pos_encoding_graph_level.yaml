@@ -1,6 +1,0 @@
-defaults:
-  - dataset: ???
-  - pos_encoding_graph_level: ???
-  - _self_
-
-random_seed: ???

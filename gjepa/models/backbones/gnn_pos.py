@@ -61,7 +61,7 @@ class PositionalCustomGNN(nn.Module):
         self.gnn = self.init_gnn(conv, hidden_dim, [hidden_dim] * (num_layers - 1), **gnn_kwargs)
 
     def forward(self, batch: Data) -> Tensor:
-        x = batch.x
+        x = batch.x if batch.x else torch.ones((batch.num_nodes, 1), device=batch.positional_encoding.device)
         edge_index = batch.edge_index
         pos = batch.positional_encoding
         batch = batch.batch

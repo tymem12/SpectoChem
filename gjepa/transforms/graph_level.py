@@ -20,41 +20,6 @@ class SelectTargets(BaseTransform):
         return data
 
 
-
-class QM9EnergyToMeV(BaseTransform):
-    """
-    Transform: przelicza wszystkie energie w QM9 z eV na meV (×1000).
-    Indeksy w y:
-      2 ε_HOMO [eV]
-      3 ε_LUMO [eV]
-      4 Δε [eV]
-      6 ZPVE [eV]
-      7 U0 [eV]
-      8 U  [eV]
-      9 H  [eV]
-      10 G [eV]
-    """
-
-    ENERGY_IDX = [2, 3, 4, 6, 7, 8, 9, 10]
-
-    def __init__(self, y_key: str = "y"):
-        self.y_key = y_key
-
-    def __call__(self, data: Data) -> Data:
-        if not hasattr(data, self.y_key):
-            return data
-
-        y = getattr(data, self.y_key).clone()
-
-        if y.ndim == 1:
-            y[self.ENERGY_IDX] *= 1000.0
-        elif y.ndim == 2 and y.size(-1) >= 12:
-            y[:, self.ENERGY_IDX] *= 1000.0
-
-        setattr(data, self.y_key, y)
-        return data
-
-
 class AddEdgesAndDistances(object):
     def __init__(self, cutoff=5.0):
         self.cutoff = cutoff

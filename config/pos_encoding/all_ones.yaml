@@ -1,6 +1,0 @@
-name: all_ones
-file: data/pos_encodings/${dataset.name}/${.name}.pt
-dim: ${.transforms.AllOnesPosencs.dim}
-transforms:
-  AllOnesPosencs:
-    dim: 8

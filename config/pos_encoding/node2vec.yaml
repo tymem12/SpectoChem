@@ -1,4 +1,0 @@
-name: node2vec
-file: data/pos_encodings/${dataset.name}/${.name}.pt
-dim: 8
-transforms: {}

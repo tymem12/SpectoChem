@@ -1,5 +1,5 @@
 name: fourier_freq
-file: data/pos_encodings_graph_level/${dataset.name}/${.name}.pt
+file: data/pos_encoding/${dataset.name}/${.name}.pt
 dim: 20
 transforms:
   FourierFrequencyPE:

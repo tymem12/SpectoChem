@@ -2,7 +2,7 @@
 
 defaults:
   - override /training: training
-  - override /dataset: amazon_ratings
+  - override /dataset: TMQM_SPECTO
   - override /pos_encoding: null
   - override /model: ???
-  - override /backbone@model.backbone: hetero_sage_3_layer
+  - override /backbone@model.backbone: gcn_2_layer

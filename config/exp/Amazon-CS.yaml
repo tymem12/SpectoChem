@@ -1,8 +1,0 @@
-# @package _global_
-
-defaults:
-  - override /training: training
-  - override /dataset: Amazon-CS
-  - override /pos_encoding: null
-  - override /model: ???
-  - override /backbone@model.backbone: gcn_2_layer

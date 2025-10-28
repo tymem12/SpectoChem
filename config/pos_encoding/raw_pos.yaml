@@ -1,5 +1,5 @@
 name: raw_pos
-file: data/pos_encodings_graph_level/${dataset.name}/${.name}.pt
+file: data/pos_encoding/${dataset.name}/${.name}.pt
 dim: 3
 transforms:
   Raw3DCoordinatesPE:

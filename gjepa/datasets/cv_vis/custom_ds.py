@@ -108,7 +108,7 @@ class SpectoDataset(InMemoryDataset):
                         if col not in df.columns:
                             raise KeyError(f"Requested y column '{col}' not found in CSV.")
                         vals.append(row[col])
-                    y = _to_float_vec(vals)
+                    y = torch.tensor([float(v) for v in vals], dtype=torch.float32).unsqueeze(0)  # -> shape (1, C)
                     if y_dim is not None and y.numel() != y_dim:
                         raise ValueError(f"Row {i}: y dim mismatch (got {y.numel()}, expected {y_dim}).")
                     kwargs["y"] = y

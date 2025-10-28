@@ -1,7 +1,0 @@
-name: laplacian
-file: data/pos_encodings/${dataset.name}/${.name}.pt
-transforms:
-  LaplacianPE:
-    k: 2
-    sigma: 0.1
-    attr_name: positional_encoding

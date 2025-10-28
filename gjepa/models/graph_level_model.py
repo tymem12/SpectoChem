@@ -72,6 +72,7 @@ class SupervisedGraphLevelGNN(LightningModule):
 
         y_gt = batch.y
         loss = self.predictor.loss_func(input=logits, target=y_gt)
+
         self.metrics[f"{split}_metrics"](preds=logits, target=y_gt)
         self.log_dict(
             self.metrics[f"{split}_metrics"],  # type: ignore[arg-type]

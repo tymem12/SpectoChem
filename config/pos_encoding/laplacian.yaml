@@ -1,7 +1,0 @@
-name: laplacian
-file: data/pos_encodings/${dataset.name}/${.name}.pt
-dim: ${.transforms.AddLaplacianEigenvectorPE.k}
-transforms:
-  AddLaplacianEigenvectorPE:
-    k: 8
-    attr_name: pos

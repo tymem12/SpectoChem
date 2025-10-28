@@ -13,50 +13,16 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.data import Dataset, Data, Dataset, InMemoryDataset
 from torch_geometric.datasets import ZINC, QM9, TUDataset
 from torch_geometric.transforms import BaseTransform
-from openqdc.datasets import (Molecule3D, QMugs, Spice, TMQM, COMP6)
-from openqdc.datasets import QM9 as QM9PEM
 
 from gjepa.utils.pyg import create_transform
 
 from gjepa.config import GraphLevelDatasetConfig
 from gjepa.datasets.node_level import GraphDataModule
-from gjepa.datasets.cv_vis.custom_ds import ChemicalDataset
+from gjepa.datasets.cv_vis.custom_ds import SpectoDataset
 from gjepa.utils.pos_encoding import attach_pe_to_dataset_inplace
 from gjepa.utils.graph_level import split_dataset
 import torch.nn.functional as F
 
-
-class ZINCWrapper(InMemoryDataset):
-    def __init__(self, root: str, **kwargs):
-        splits = {
-            split: ZINC(
-                root,
-                split=split,
-                **kwargs
-            )
-            for split in ("train", "val", "test")
-        }
-
-        data_list = []
-        self.split_indices = {}
-
-        start = 0
-
-        for name, ds in splits.items():
-            end = start + len(ds)
-            self.split_indices[name] = list(range(start, end))
-
-            for data in ds:
-                if data.y.dim() == 1:
-                    data.y = data.y.unsqueeze(-1)
-
-                data_list.append(data)
-
-            start = end
-
-        super().__init__(root)
-
-        self.data, self.slices = self.collate(data_list)
 
 def load_graph(
     root_dir: Path,
@@ -65,46 +31,12 @@ def load_graph(
     pre_transform: BaseTransform | None = None,
     additional_loading_params: dict[str, Any] | None = None
 ) -> Dataset:
-    kwargs = dict(root=root_dir, transform=transform, pre_transform=pre_transform)
+    kwargs = dict(root=root_dir, transform=transform, pre_transform=pre_transform) | additional_loading_params
 
-    if name == ZINC.__name__:
-        dataset = ZINCWrapper(**kwargs)
+    if name == "TMQM_SPECTO":
+        dataset = SpectoDataset(**kwargs)
     else:
-        if name == QM9.__name__:
-            dataset = QM9(**kwargs)
-        # elif name == "TMQM_SPECTO":
-        #     dataset = ChemicalDataset(**kwargs)
-        elif name == "ENZYMES":
-            dataset = TUDataset(name=name, **kwargs)
-        elif name in ['QMUG', 'MOLECULES3D', 'SPICE', 'QM9PEM', 'COMP6']:
-            kwargs_open_qdc = dict(energy_unit="kcal/mol",
-                                   distance_unit="ang",
-                                   array_format="torch",
-                                   energy_type='regression',
-                                   cache_dir=kwargs["root"].joinpath("open_qdc"))
-
-            if name == 'QMUG':
-                open_qdc_dataset = QMugs(**kwargs_open_qdc)
-            elif name == 'MOLECULES3D':
-                open_qdc_dataset = Molecule3D(**kwargs_open_qdc)
-            elif name == 'SPICE':
-                open_qdc_dataset = Spice(**kwargs_open_qdc)
-            elif name == 'QM9PEM':
-                open_qdc_dataset = QM9PEM(**kwargs_open_qdc)
-            elif name == 'COMP6':
-                open_qdc_dataset = COMP6(**kwargs_open_qdc)
-            else:
-                raise ValueError(f"Unknown dataset name: {name}")
-                
-            dataset = OpenQDCToPyG(
-                oqdc_ds=open_qdc_dataset,
-                root=kwargs["root"].joinpath(name),
-                transform=transform,
-                pre_transform=pre_transform,
-                **additional_loading_params
-            )
-        else:
-            raise ValueError(f"Invalid dataset name in config: {name!r}")
+        raise ValueError(f"Invalid dataset name in config: {name!r}")
 
     return dataset
 
@@ -160,6 +92,8 @@ class GraphLevelDataModule(GraphDataModule):
 
         )
 
+
+
         if self.pos_enc_path is not None:
             attach_pe_to_dataset_inplace(dataset=dataset, pe_path=self.pos_enc_path)
         if should_split:
@@ -171,27 +105,9 @@ class GraphLevelDataModule(GraphDataModule):
             self.val_ds   = Subset(dataset, dataset.split_indices["val"])
             self.test_ds  = Subset(dataset, dataset.split_indices["test"])
 
-        if self.config.target_standarization:
-            self.calc_std_y()
+        print(f"Loaded dataset '{name}' with {len(dataset)} graphs.")
+        print(dataset[0])
 
-
-        
-    def calc_std_y(self) -> None:
-        assert self.train_ds is not None and self.val_ds is not None and self.test_ds is not None
-
-        def _get_y_row(data: Data):
-            y = data.y.float()
-            if y.dim() == 1:
-                y = y.unsqueeze(0)
-            elif y.dim() > 2:
-                y = y.view(1, -1)
-            return y
-
-        ys = [_get_y_row(self.train_ds.dataset[i]) for i in self.train_ds.indices]
-        Y = torch.cat(ys, dim=0)
-        self.y_mean = Y.mean(dim=0, keepdim=True)
-        self.y_std = Y.std(dim=0, keepdim=True, unbiased=False)
-        self.y_std[self.y_std == 0] = 1.0
 
         
     def _get_dataloader(self, dataset: Subset, **kwargs) -> DataLoader:
