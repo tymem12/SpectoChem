@@ -61,26 +61,48 @@ class TMQMGStarDataset(InMemoryDataset):
         """Select correct CSV depending on block_3_only flag."""
         if self.block_3_only:
             return "raw/uvvis_final_40k.csv"
-        else:
-            return "raw/all.csv"
+
+        return "raw/tmqm_all.csv"
 
     def download(self):
         """Dataset assumed to be locally available."""
         pass
 
     def process(self):
-        csv_path = os.path.join(self.root, self._csv_filename())
-        if not os.path.exists(csv_path):
-            raise FileNotFoundError(f"CSV not found: {csv_path}")
+        base_csv_path = os.path.join(self.root, self._csv_filename())
+        tmqmg_star_path = os.path.join(self.root, "raw", "tmqmg_star.csv")
 
-        df = pd.read_csv(csv_path)
+        if not os.path.exists(base_csv_path):
+            raise FileNotFoundError(f"Base CSV not found: {base_csv_path}")
+        if not os.path.exists(tmqmg_star_path):
+            raise FileNotFoundError(f"tmqmg_star.csv not found: {tmqmg_star_path}")
+
+        df_base = pd.read_csv(base_csv_path)
+        df_star = pd.read_csv(tmqmg_star_path)
+
+        if "CSD_code" not in df_base.columns:
+            raise KeyError("Missing 'CSD_code' column in base CSV.")
+        if "id" not in df_star.columns:
+            raise KeyError("Missing 'id' column in tmqmg_star.csv.")
+
+        overlap = set(df_base.columns) & set(df_star.columns) - {"CSD_code", "id"}
+        if overlap:
+            raise ValueError(f"Overlapping columns between base and star CSVs: {sorted(overlap)}")
+
+        df = pd.merge(
+            df_base,
+            df_star,
+            how="inner",
+            left_on="CSD_code",
+            right_on="id"
+        )
+
+        print(f"Merged dataset: {len(df)} rows (from {len(df_base)} base and {len(df_star)} star)")
 
         required = ["atom_coords", "atom_types", "SMILES", "origin_ID", "CSD_code"]
-
         missing = [c for c in required if c not in df.columns]
-
         if missing:
-            raise KeyError(f"Missing required columns in CSV: {missing}")
+            raise KeyError(f"Missing required columns in merged dataset: {missing}")
 
         if any(c.upper() == "ABSORPTION_SPECTOGRAM" for c in self.y_columns):
             raise NotImplementedError(
@@ -90,7 +112,7 @@ class TMQMGStarDataset(InMemoryDataset):
         data_list: list[Data] = []
         y_dim: Optional[int] = len(self.y_columns) if self.y_columns else None
 
-        for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing TMQMG*"):
+        for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing TMQMG* merged"):
             try:
                 num_atoms = int(row["num_atoms"]) if "num_atoms" in df.columns and not pd.isna(row["num_atoms"]) else None
                 pos = _parse_coords(row["atom_coords"], expected_n=num_atoms)
@@ -108,7 +130,7 @@ class TMQMGStarDataset(InMemoryDataset):
                     vals = []
                     for col in self.y_columns:
                         if col not in df.columns:
-                            raise KeyError(f"Requested y column '{col}' not found in CSV.")
+                            raise KeyError(f"Requested y column '{col}' not found in merged dataset.")
                         vals.append(row[col])
                     y = torch.tensor([float(v) for v in vals], dtype=torch.float32).unsqueeze(0)
                     if y_dim is not None and y.numel() != y_dim:
@@ -117,7 +139,7 @@ class TMQMGStarDataset(InMemoryDataset):
 
                 for col in self.extra_fields:
                     if col not in df.columns:
-                        raise KeyError(f"Requested extra field '{col}' not found in CSV.")
+                        raise KeyError(f"Requested extra field '{col}' not found in merged dataset.")
                     val = row[col]
                     parsed = None
                     if isinstance(val, str) and val.strip().startswith("[") and val.strip().endswith("]"):
