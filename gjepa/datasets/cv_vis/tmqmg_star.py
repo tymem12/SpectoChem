@@ -1,17 +1,14 @@
 import os
 import json
 import hashlib
-from typing import Optional, Sequence
-
+from typing import Optional, Sequence, Tuple, List
 import torch
-
 import pandas as pd
-
+import numpy as np
 from tqdm import tqdm
-
 from torch_geometric.data import InMemoryDataset, Data
-
 from gjepa.utils.cv_vis import _is_number, _to_list, _parse_coords, _parse_atom_types
+
 
 class TMQMGStarDataset(InMemoryDataset):
     def __init__(
@@ -24,11 +21,23 @@ class TMQMGStarDataset(InMemoryDataset):
         pre_transform=None,
         force_reprocess: bool = False,
         version: str = "v1",
+        prediction_type: str = "pairs",
+        prediction_params: Optional[dict] = None,
+        vis_range: Tuple[float, float] = (400.0, 700.0),
+        max_states: int = 10
     ):
         self.y_columns = list(y_columns) if y_columns else []
         self.extra_fields = list(extra_fields) if extra_fields else []
         self.block_3_only = block_3_only
         self.version = str(version)
+
+        self.prediction_type = prediction_type
+        self.prediction_params = prediction_params or {}
+        self.min_lambda, self.max_lambda = vis_range
+        self.max_states = max_states
+
+        if self.prediction_type not in {"pairs", "vector"}:
+            raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
         super().__init__(root=root, transform=transform, pre_transform=pre_transform)
 
@@ -53,20 +62,79 @@ class TMQMGStarDataset(InMemoryDataset):
             "block_3_only": self.block_3_only,
             "version": self.version,
             "pre_transform": repr(self.pre_transform.__class__.__name__) if self.pre_transform else "none",
+            "prediction_type": self.prediction_type,
+            "prediction_params": self.prediction_params,
+            "vis_range": (self.min_lambda, self.max_lambda),
         }
         h = hashlib.sha1(json.dumps(sig, sort_keys=True).encode()).hexdigest()[:12]
         return [f"tmqmg-star_block3-{self.block_3_only}_y{len(self.y_columns)}_{h}.pt"]
 
     def _csv_filename(self) -> str:
-        """Select correct CSV depending on block_3_only flag."""
-        if self.block_3_only:
-            return "raw/uvvis_final_40k.csv"
-
-        return "raw/tmqm_all.csv"
+        return "raw/uvvis_final_40k.csv" if self.block_3_only else "raw/tmqm_all.csv"
 
     def download(self):
-        """Dataset assumed to be locally available."""
         pass
+
+    def _filter_visible_transitions(self, row: pd.Series) -> List[Tuple[float, float]]:
+        """
+        Return the first 10 (lambda, f) pairs that are **all** inside the visible range.
+        If any of the first 10 is missing or outside the range → return [] (molecule is dropped).
+        """
+        transitions = []
+        for i in range(1, self.max_states):
+            lam_col = f"lambda_{i}_gasphase"
+            f_col = f"f_{i}_gasphase"
+
+            if lam_col not in row or f_col not in row:
+                return []
+
+            lam = row[lam_col]
+            f = row[f_col]
+
+            if pd.isna(lam) or pd.isna(f):
+                return []
+
+            lam, f = float(lam), float(f)
+
+            if not (self.min_lambda <= lam <= self.max_lambda):
+                return []
+            transitions.append((lam, f))
+
+        return transitions
+
+    def _build_top_pairs(self, transitions: List[Tuple[float, float]], num_pairs: int = 10) -> torch.Tensor:
+        """First-k absorptions (by input order) in visible range → flat vector [λ1, f1, λ2, f2, ...]."""
+        if not transitions:
+            return torch.zeros(1, num_pairs * 2, dtype=torch.float32)
+
+        selected = transitions[:num_pairs]
+
+        vec = []
+        for lam, f in selected:
+            vec.extend([lam, f])
+
+        while len(vec) < num_pairs * 2:
+            vec.extend([0.0, 0.0])
+
+        return torch.tensor([vec], dtype=torch.float32)
+
+    def _build_absorption_vector(
+        self,
+        transitions: List[Tuple[float, float]],
+        wavelength_range: Tuple[float, float] = (300.0, 700.0),
+        num_bins: int = 400
+    ) -> torch.Tensor:
+        """Histogram-style discrete spectrum."""
+        start, end = wavelength_range
+        hist = np.zeros(num_bins)
+
+        for lam, f in transitions:
+            if start <= lam <= end:
+                idx = int((lam - start) / (end - start) * num_bins)
+                idx = min(max(idx, 0), num_bins - 1)
+                hist[idx] += f
+
+        return torch.tensor(hist, dtype=torch.float32).unsqueeze(0)
 
     def process(self):
         base_csv_path = os.path.join(self.root, self._csv_filename())
@@ -109,16 +177,20 @@ class TMQMGStarDataset(InMemoryDataset):
                 "ABSORPTION_SPECTOGRAM selected. NOW WE DO NOT HAVE THE DATA"
             )
 
-        data_list: list[Data] = []
-        y_dim: Optional[int] = len(self.y_columns) if self.y_columns else None
+        data_list: List[Data] = []
 
-        for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing TMQMG* merged"):
+        num_pairs = self.prediction_params.get("num_pairs", 10)
+        vector_range = self.prediction_params.get("wavelength_range", (300.0, 700.0))
+        num_bins = self.prediction_params.get("num_bins", 400)
+
+        for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing"):
             try:
-                num_atoms = int(row["num_atoms"]) if "num_atoms" in df.columns and not pd.isna(row["num_atoms"]) else None
+                num_atoms = int(row["num_atoms"]) if "num_atoms" in row and not pd.isna(row["num_atoms"]) else None
                 pos = _parse_coords(row["atom_coords"], expected_n=num_atoms)
                 z = _parse_atom_types(row["atom_types"])
+
                 if pos.size(0) != z.numel():
-                    raise ValueError(f"Row {i}: pos has {pos.size(0)} atoms but z has {z.numel()}.")
+                    raise ValueError(f"Atom count mismatch: pos={pos.size(0)}, z={z.numel()}")
 
                 smiles = "" if pd.isna(row["SMILES"]) else str(row["SMILES"])
                 origin_id = None if pd.isna(row["origin_ID"]) else str(row["origin_ID"])
@@ -126,15 +198,18 @@ class TMQMGStarDataset(InMemoryDataset):
 
                 kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
 
-                if self.y_columns:
-                    vals = []
-                    for col in self.y_columns:
-                        if col not in df.columns:
-                            raise KeyError(f"Requested y column '{col}' not found in merged dataset.")
-                        vals.append(row[col])
-                    y = torch.tensor([float(v) for v in vals], dtype=torch.float32).unsqueeze(0)
-                    if y_dim is not None and y.numel() != y_dim:
-                        raise ValueError(f"Row {i}: y dim mismatch (got {y.numel()}, expected {y_dim}).")
+                if self.prediction_type in {"pairs", "vector"}:
+                    transitions = self._filter_visible_transitions(row)
+                    if len(transitions) != self.max_states:
+                        continue
+                    if self.prediction_type == "pairs":
+                        y = self._build_top_pairs(transitions, num_pairs=num_pairs)
+                    else:
+                        y = self._build_absorption_vector(transitions, vector_range, num_bins)
+                else:
+                    y = None
+
+                if y is not None:
                     kwargs["y"] = y
 
                 for col in self.extra_fields:
@@ -151,13 +226,16 @@ class TMQMGStarDataset(InMemoryDataset):
                     kwargs[col] = parsed if parsed is not None else val
 
                 data = Data(**kwargs)
-                if self.pre_transform is not None:
+                if self.pre_transform:
                     data = self.pre_transform(data)
-
                 data_list.append(data)
 
             except Exception as e:
-                raise RuntimeError(f"Error parsing row {i}: {e}") from e
+                print(f"Skipping row {i}: {e}")
+                continue
+
+        if not data_list:
+            raise RuntimeError("No valid molecules processed.")
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
