@@ -23,8 +23,8 @@ class TMQMGStarDataset(InMemoryDataset):
         version: str = "v1",
         prediction_type: str = "pairs",
         prediction_params: Optional[dict] = None,
-        vis_range: Tuple[float, float] = (400.0, 700.0),
-        max_states: int = 10
+        vis_range: Tuple[float, float] = (380.0, 750.0),
+        max_states: Optional[int] = None
     ):
         self.y_columns = list(y_columns) if y_columns else []
         self.extra_fields = list(extra_fields) if extra_fields else []
@@ -54,20 +54,45 @@ class TMQMGStarDataset(InMemoryDataset):
     def raw_file_names(self) -> list[str]:
         return [self._csv_filename()]
 
+    @staticmethod
+    def serialize_params_for_filename(params: dict) -> str:
+        """Convert a dict of parameters into a short, filename-safe string."""
+        if not params:
+            return "none"
+        parts = []
+        for k, v in sorted(params.items()):
+            if isinstance(v, (list, tuple)):
+                v = "-".join(map(str, v))
+            elif isinstance(v, dict):
+                v = "_".join(f"{subk}{subv}" for subk, subv in sorted(v.items()))
+            parts.append(f"{k}{v}")
+        s = "_".join(parts)
+        return s.replace(" ", "_").replace("/", "-").replace(":", "_")
+
     @property
     def processed_file_names(self) -> list[str]:
-        sig = {
-            "y_columns": tuple(self.y_columns),
-            "extra_fields": tuple(self.extra_fields),
-            "block_3_only": self.block_3_only,
-            "version": self.version,
-            "pre_transform": repr(self.pre_transform.__class__.__name__) if self.pre_transform else "none",
-            "prediction_type": self.prediction_type,
-            "prediction_params": self.prediction_params,
-            "vis_range": (self.min_lambda, self.max_lambda),
-        }
-        h = hashlib.sha1(json.dumps(sig, sort_keys=True).encode()).hexdigest()[:12]
-        return [f"tmqmg-star_block3-{self.block_3_only}_y{len(self.y_columns)}_{h}.pt"]
+        """Return a human-readable, unique filename based on configuration."""
+        pred_type = self.prediction_type.replace(" ", "_")
+        params_str = self.serialize_params_for_filename(self.prediction_params)
+
+        vis_range_str = f"{self.min_lambda}-{self.max_lambda}"
+        y_str = f"y{len(self.y_columns)}"
+        pre_transform = (
+            repr(self.pre_transform.__class__.__name__)
+            if self.pre_transform
+            else "none"
+        )
+
+        filename = (
+            f"tmqmg_block3-{self.block_3_only}_"
+            f"{pred_type}_{params_str}_"
+            f"states-{self.max_states}_"
+            f"vis_range-{self.min_lambda}-{self.max_lambda}_"
+            f"pre{pre_transform}.pt"
+        )
+
+        filename = filename.replace("__", "_").replace("..", ".")
+        return [filename]
 
     def _csv_filename(self) -> str:
         return "raw/uvvis_final_40k.csv" if self.block_3_only else "raw/tmqm_all.csv"
@@ -77,11 +102,11 @@ class TMQMGStarDataset(InMemoryDataset):
 
     def _filter_visible_transitions(self, row: pd.Series) -> List[Tuple[float, float]]:
         """
-        Return the first 10 (lambda, f) pairs that are **all** inside the visible range.
-        If any of the first 10 is missing or outside the range → return [] (molecule is dropped).
+        Return the first states (lambda, f) pairs that are **all** inside the visible range.
+        If any of the first states is missing or outside the range → return [] (molecule is dropped).
         """
         transitions = []
-        for i in range(1, self.max_states):
+        for i in range(1, self.max_states+1):
             lam_col = f"lambda_{i}_gasphase"
             f_col = f"f_{i}_gasphase"
 
@@ -99,7 +124,6 @@ class TMQMGStarDataset(InMemoryDataset):
             if not (self.min_lambda <= lam <= self.max_lambda):
                 return []
             transitions.append((lam, f))
-
         return transitions
 
     def _build_top_pairs(self, transitions: List[Tuple[float, float]], num_pairs: int = 10) -> torch.Tensor:
@@ -121,10 +145,10 @@ class TMQMGStarDataset(InMemoryDataset):
     def _build_absorption_vector(
         self,
         transitions: List[Tuple[float, float]],
-        wavelength_range: Tuple[float, float] = (300.0, 700.0),
-        num_bins: int = 400
+        wavelength_range: Tuple[float, float]
     ) -> torch.Tensor:
         """Histogram-style discrete spectrum."""
+        num_bins = int(wavelength_range[1] - wavelength_range[0])
         start, end = wavelength_range
         hist = np.zeros(num_bins)
 
@@ -133,7 +157,6 @@ class TMQMGStarDataset(InMemoryDataset):
                 idx = int((lam - start) / (end - start) * num_bins)
                 idx = min(max(idx, 0), num_bins - 1)
                 hist[idx] += f
-
         return torch.tensor(hist, dtype=torch.float32).unsqueeze(0)
 
     def process(self):
@@ -179,10 +202,6 @@ class TMQMGStarDataset(InMemoryDataset):
 
         data_list: List[Data] = []
 
-        num_pairs = self.prediction_params.get("num_pairs", 10)
-        vector_range = self.prediction_params.get("wavelength_range", (300.0, 700.0))
-        num_bins = self.prediction_params.get("num_bins", 400)
-
         for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing"):
             try:
                 num_atoms = int(row["num_atoms"]) if "num_atoms" in row and not pd.isna(row["num_atoms"]) else None
@@ -200,12 +219,21 @@ class TMQMGStarDataset(InMemoryDataset):
 
                 if self.prediction_type in {"pairs", "vector"}:
                     transitions = self._filter_visible_transitions(row)
-                    if len(transitions) != self.max_states:
+                    if not transitions:
                         continue
                     if self.prediction_type == "pairs":
-                        y = self._build_top_pairs(transitions, num_pairs=num_pairs)
+                        try:
+                            num_pairs = self.prediction_params["num_pairs"]
+                            y = self._build_top_pairs(transitions, num_pairs=num_pairs)
+                        except KeyError:
+                            print("Num pairs not defined")
                     else:
-                        y = self._build_absorption_vector(transitions, vector_range, num_bins)
+                        try:
+                            vector_range = self.prediction_params["range"]
+                            y = self._build_absorption_vector(transitions, vector_range)
+                        except KeyError:
+                            print("Range not defined")
+
                 else:
                     y = None
 
