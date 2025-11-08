@@ -7,11 +7,10 @@ transforms:
 in_channels: 1
 task_type: regression
 prediction_type: pairs
-prediction_params:
-  num_pairs: 20
+num_states: 10
 main_metric: MAE
 metric_mode: min
 split_ratios: [0.8, 0.1]
-vis_range: [400, 700]
-lambda: 10
+vis_range: [380, 750]
+filter_states: 10
 subset: "cv_vis"

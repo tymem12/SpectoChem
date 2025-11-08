@@ -24,7 +24,8 @@ class TMQMGStarDataset(InMemoryDataset):
         prediction_type: str = "pairs",
         prediction_params: Optional[dict] = None,
         vis_range: Tuple[float, float] = (380.0, 750.0),
-        max_states: Optional[int] = None
+        num_states: int = 10,
+        filter_states: int = 0
     ):
         self.y_columns = list(y_columns) if y_columns else []
         self.extra_fields = list(extra_fields) if extra_fields else []
@@ -34,7 +35,8 @@ class TMQMGStarDataset(InMemoryDataset):
         self.prediction_type = prediction_type
         self.prediction_params = prediction_params or {}
         self.min_lambda, self.max_lambda = vis_range
-        self.max_states = max_states
+        self.num_states = num_states
+        self.filter_states = filter_states
 
         if self.prediction_type not in {"pairs", "vector"}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
@@ -86,7 +88,8 @@ class TMQMGStarDataset(InMemoryDataset):
         filename = (
             f"tmqmg_block3-{self.block_3_only}_"
             f"{pred_type}_{params_str}_"
-            f"states-{self.max_states}_"
+            f"num_states-{self.num_states}_"
+            f"filter_states-{self.filter_states}_"
             f"vis_range-{self.min_lambda}-{self.max_lambda}_"
             f"pre{pre_transform}.pt"
         )
@@ -106,7 +109,7 @@ class TMQMGStarDataset(InMemoryDataset):
         If any of the first states is missing or outside the range → return [] (molecule is dropped).
         """
         transitions = []
-        for i in range(1, self.max_states+1):
+        for i in range(1, self.num_states+1):
             lam_col = f"lambda_{i}_gasphase"
             f_col = f"f_{i}_gasphase"
 
@@ -121,7 +124,7 @@ class TMQMGStarDataset(InMemoryDataset):
 
             lam, f = float(lam), float(f)
 
-            if not (self.min_lambda <= lam <= self.max_lambda):
+            if i <= self.filter_states and not (self.min_lambda <= lam <= self.max_lambda):
                 return []
             transitions.append((lam, f))
         return transitions
@@ -223,7 +226,7 @@ class TMQMGStarDataset(InMemoryDataset):
                         continue
                     if self.prediction_type == "pairs":
                         try:
-                            num_pairs = self.prediction_params["num_pairs"]
+                            num_pairs = self.num_states
                             y = self._build_top_pairs(transitions, num_pairs=num_pairs)
                         except KeyError:
                             print("Num pairs not defined")

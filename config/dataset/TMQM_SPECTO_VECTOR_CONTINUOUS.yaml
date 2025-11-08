@@ -7,13 +7,14 @@ transforms:
 in_channels: 1
 prediction_type: vector
 prediction_params:
-  range: (280, 350)
-  approximation: gaussian
+  range: (380, 750)
+  approximation: tutaj mogą być jakiekolwiek parametry
+num_states: 10
 task_type: regression
 main_metric: MAE
 metric_mode: min
 split_ratios: [0.8, 0.1]
-vis_range: [400, 700]
-lambda: 10
+vis_range: [380, 750]
+filter_states: 10
 subset: "cv_vis"
 
