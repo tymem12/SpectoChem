@@ -5,12 +5,14 @@ transforms:
   AddEdgesAndDistances:
     cutoff: 5.0
 in_channels: 1
-task_type: regression
-prediction_type: pairs
-num_states: 10
-main_metric: MAE
-metric_mode: min
+out_channels: 20
+task_type: multiregression
 split_ratios: [0.8, 0.1]
-vis_range: [380, 750]
-filter_states: 10
-subset: "cv_vis"
+metric_mode: min
+main_metric: MAE
+additional_loading_params: 
+  prediction_type: pairs
+  num_states: 10
+  vis_range: [380, 750]
+  filter_states: 10
+  block_3_only: True

@@ -34,7 +34,7 @@ def setup_trainer(
         deterministic="warn",
         accelerator=DEVICE,
         devices=1,
-        num_sanity_val_steps=0,
+        num_sanity_val_steps=2,
         check_val_every_n_epoch=1,
         reload_dataloaders_every_n_epochs=reload_dataloaders_every_n_epochs,
     )
@@ -44,7 +44,6 @@ def setup_callbacks(config: TrainingConfig) -> list[Callback]:
     callbacks: list[Callback] = [LearningRateMonitor(logging_interval="epoch")]
     if config.early_stopping:
         callbacks.append(EarlyStopping(**config.early_stopping))
-
     if config.checkpoint:
         checkpoint_callback = ModelCheckpoint(
             filename=f"{{epoch}}-{{{config.checkpoint['monitor']}:.2f}}",

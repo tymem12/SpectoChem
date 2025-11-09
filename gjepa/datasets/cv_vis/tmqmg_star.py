@@ -206,64 +206,56 @@ class TMQMGStarDataset(InMemoryDataset):
         data_list: List[Data] = []
 
         for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing"):
-            try:
-                num_atoms = int(row["num_atoms"]) if "num_atoms" in row and not pd.isna(row["num_atoms"]) else None
-                pos = _parse_coords(row["atom_coords"], expected_n=num_atoms)
-                z = _parse_atom_types(row["atom_types"])
-
-                if pos.size(0) != z.numel():
-                    raise ValueError(f"Atom count mismatch: pos={pos.size(0)}, z={z.numel()}")
-
-                smiles = "" if pd.isna(row["SMILES"]) else str(row["SMILES"])
-                origin_id = None if pd.isna(row["origin_ID"]) else str(row["origin_ID"])
-                csd_code = None if pd.isna(row["CSD_code"]) else str(row["CSD_code"])
-
-                kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
-
-                if self.prediction_type in {"pairs", "vector"}:
-                    transitions = self._filter_visible_transitions(row)
-                    if not transitions:
-                        continue
-                    if self.prediction_type == "pairs":
-                        try:
-                            num_pairs = self.num_states
-                            y = self._build_top_pairs(transitions, num_pairs=num_pairs)
-                        except KeyError:
-                            print("Num pairs not defined")
-                    else:
-                        try:
-                            vector_range = self.prediction_params["range"]
-                            y = self._build_absorption_vector(transitions, vector_range)
-                        except KeyError:
-                            print("Range not defined")
-
+            # try:
+            num_atoms = int(row["num_atoms"]) if "num_atoms" in row and not pd.isna(row["num_atoms"]) else None
+            pos = _parse_coords(row["atom_coords"], expected_n=num_atoms)
+            z = _parse_atom_types(row["atom_types"])
+            if pos.size(0) != z.numel():
+                raise ValueError(f"Atom count mismatch: pos={pos.size(0)}, z={z.numel()}")
+            smiles = "" if pd.isna(row["SMILES"]) else str(row["SMILES"])
+            origin_id = None if pd.isna(row["origin_ID"]) else str(row["origin_ID"])
+            csd_code = None if pd.isna(row["CSD_code"]) else str(row["CSD_code"])
+            kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
+            if self.prediction_type in {"pairs", "vector"}:
+                transitions = self._filter_visible_transitions(row)
+                if not transitions:
+                    continue
+                if self.prediction_type == "pairs":
+                    try:
+                        num_pairs = self.num_states
+                        y = self._build_top_pairs(transitions, num_pairs=num_pairs)
+                    except KeyError:
+                        print("Num pairs not defined")
                 else:
-                    y = None
+                    try:
+                        vector_range = self.prediction_params["range"]
+                        y = self._build_absorption_vector(transitions, vector_range)
+                    except KeyError:
+                        print("Range not defined")
+            else:
+                y = None
+            if y is not None:
+                kwargs["y"] = y
+            for col in self.extra_fields:
+                if col not in df.columns:
+                    raise KeyError(f"Requested extra field '{col}' not found in merged dataset.")
+                val = row[col]
+                parsed = None
+                if isinstance(val, str) and val.strip().startswith("[") and val.strip().endswith("]"):
+                    maybe = _to_list(val)
+                    if all(_is_number(x) for x in maybe):
+                        parsed = torch.tensor([float(x) for x in maybe], dtype=torch.float32)
+                    else:
+                        parsed = maybe
+                kwargs[col] = parsed if parsed is not None else val
+            data = Data(**kwargs)
+            if self.pre_transform:
+                data = self.pre_transform(data)
+            data_list.append(data)
 
-                if y is not None:
-                    kwargs["y"] = y
-
-                for col in self.extra_fields:
-                    if col not in df.columns:
-                        raise KeyError(f"Requested extra field '{col}' not found in merged dataset.")
-                    val = row[col]
-                    parsed = None
-                    if isinstance(val, str) and val.strip().startswith("[") and val.strip().endswith("]"):
-                        maybe = _to_list(val)
-                        if all(_is_number(x) for x in maybe):
-                            parsed = torch.tensor([float(x) for x in maybe], dtype=torch.float32)
-                        else:
-                            parsed = maybe
-                    kwargs[col] = parsed if parsed is not None else val
-
-                data = Data(**kwargs)
-                if self.pre_transform:
-                    data = self.pre_transform(data)
-                data_list.append(data)
-
-            except Exception as e:
-                print(f"Skipping row {i}: {e}")
-                continue
+            # except Exception as e:
+            #     print(f"Skipping row {i}: {e}")
+            #     continue
 
         if not data_list:
             raise RuntimeError("No valid molecules processed.")

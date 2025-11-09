@@ -1,5 +1,11 @@
 from typing import Any
 
+import os
+import pandas as pd 
+import numpy as np
+import torch
+
+
 from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 from torch.optim import AdamW
@@ -10,7 +16,7 @@ from gjepa.config import GraphLevelExperimentConfig
 from gjepa.models.encoders import GNNEncoder
 from gjepa.models.predictors import LinearClassifier, LinearRegressor
 from gjepa.utils.lr_scheduler import LinearWarmupCosineAnnealingLR  # type: ignore
-
+from gjepa.utils.cv_vis import plot_graph_with_predictions
 
 class SupervisedGraphLevelGNN(LightningModule):
     """Graph-level training."""
@@ -43,6 +49,8 @@ class SupervisedGraphLevelGNN(LightningModule):
                 for split in ("train", "val", "test")
             }
         )
+        self._test_outputs: list[dict] = []import pandas as pd
+
 
     def forward(self, batch: Data) -> Tensor:
         z = self._get_pooled_z(batch)
@@ -59,8 +67,19 @@ class SupervisedGraphLevelGNN(LightningModule):
     def validation_step(self, batch: Data, batch_idx: int) -> None:
         self._shared_step(batch, split="val")
 
-    def test_step(self, batch: Data, batch_idx: int) -> None:
-        self._shared_step(batch, split="test")
+    def test_step(self, batch: Data, batch_idx: int) -> Tensor:
+        loss = self._shared_step(batch, split="test")
+
+        logits = self.forward(batch)
+        self._test_outputs.append(
+            {   
+                "origin_id": batch.origin_id, 
+                "y": batch.y.detach().cpu(),
+                "y_pred": logits.detach().cpu(),
+            }
+        )
+
+        return loss
 
     def predict_step(
         self, batch: Data, batch_idx: int, dataloader_idx: int = 0
@@ -80,6 +99,44 @@ class SupervisedGraphLevelGNN(LightningModule):
         )
 
         return loss
+
+    def on_test_end(self) -> None:
+
+        if len(self._test_outputs) == 0:
+            return
+
+        all_ids: list[str] = []
+        for o in self._test_outputs:
+            all_ids.extend(list(o["origin_id"]))
+
+        y_all = torch.cat([o["y"] for o in self._test_outputs], dim=0)        
+        y_pred_all = torch.cat([o["y_pred"] for o in self._test_outputs], dim=0)
+
+        N, D = y_all.shape
+        assert len(all_ids) == N
+
+        data = {"origin_id": np.array(all_ids)}
+        y_np = y_all.numpy()
+        y_pred_np = y_pred_all.numpy()
+
+        for i in range(D):
+            data[f"target_{i}"] = y_np[:, i]
+            data[f"prediction_{i}"] = y_pred_np[:, i]
+
+        df = pd.DataFrame(data)
+
+        save_dir = (
+            self.trainer.logger.log_dir
+            if self.trainer is not None and self.trainer.logger is not None
+            else self.trainer.default_root_dir
+        )
+        os.makedirs(save_dir, exist_ok=True)
+        csv_path = os.path.join(save_dir, "test_predictions_wide.csv")
+        df.to_csv(csv_path, index=False)
+        output_params = self.config.dataset.additional_loading_params
+        plot_graph_with_predictions(df, output_params['prediction_type'],save_dir, tuple(output_params['vis_range']))
+        print(f"[SupervisedGraphLevelGNN] saved predictions to: {csv_path}")
+
 
     def _get_pooled_z(self, batch: Data) -> Tensor:
         z = self.gnn(
@@ -129,3 +186,5 @@ class SupervisedGraphLevelGNN(LightningModule):
             f"{split}_metrics": self.predictor.metrics.clone(prefix=f"{split}_")
             for split in ("train", "val", "test")
         })
+
+        

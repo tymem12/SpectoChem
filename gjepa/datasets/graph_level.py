@@ -18,11 +18,10 @@ from gjepa.utils.pyg import create_transform
 
 from gjepa.config import GraphLevelDatasetConfig
 from gjepa.datasets.node_level import GraphDataModule
-from gjepa.datasets.cv_vis.custom_ds import SpectoDataset
 from gjepa.utils.pos_encoding import attach_pe_to_dataset_inplace
 from gjepa.utils.graph_level import split_dataset
 import torch.nn.functional as F
-
+from gjepa.datasets.cv_vis.tmqmg_star import TMQMGStarDataset
 
 def load_graph(
     root_dir: Path,
@@ -31,10 +30,12 @@ def load_graph(
     pre_transform: BaseTransform | None = None,
     additional_loading_params: dict[str, Any] | None = None
 ) -> Dataset:
+    print(f"Loading dataset '{name}' from {root_dir}...")
+    print(additional_loading_params)
     kwargs = dict(root=root_dir, transform=transform, pre_transform=pre_transform) | additional_loading_params
 
     if name == "TMQM_SPECTO":
-        dataset = SpectoDataset(**kwargs)
+        dataset = TMQMGStarDataset(**kwargs)
     else:
         raise ValueError(f"Invalid dataset name in config: {name!r}")
 
@@ -106,6 +107,10 @@ class GraphLevelDataModule(GraphDataModule):
             self.test_ds  = Subset(dataset, dataset.split_indices["test"])
 
         print(f"Loaded dataset '{name}' with {len(dataset)} graphs.")
+        print(f'len of train is {len(self.train_ds)}')
+        print(f'len of val is {len(self.val_ds)}')
+        print(f'len of test is {len(self.test_ds)}')
+
         print(dataset[0])
 
 
