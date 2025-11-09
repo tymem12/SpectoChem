@@ -1,0 +1,16 @@
+name: TMQM_SPECTO
+root_dir: data/datasets/TMQM_SPECTO
+pre_transforms: {}
+transforms: 
+  AddEdgesAndDistances:
+    cutoff: 5.0
+in_channels: 1
+task_type: regression
+prediction_type: pairs
+num_states: 10
+main_metric: MAE
+metric_mode: min
+split_ratios: [0.8, 0.1]
+vis_range: [380, 750]
+filter_states: 10
+subset: "cv_vis"
