@@ -49,7 +49,7 @@ class SupervisedGraphLevelGNN(LightningModule):
                 for split in ("train", "val", "test")
             }
         )
-        self._test_outputs: list[dict] = []import pandas as pd
+        self._test_outputs: list[dict] = []
 
 
     def forward(self, batch: Data) -> Tensor:
@@ -134,6 +134,7 @@ class SupervisedGraphLevelGNN(LightningModule):
         csv_path = os.path.join(save_dir, "test_predictions_wide.csv")
         df.to_csv(csv_path, index=False)
         output_params = self.config.dataset.additional_loading_params
+
         plot_graph_with_predictions(df, output_params['prediction_type'],save_dir, tuple(output_params['vis_range']))
         print(f"[SupervisedGraphLevelGNN] saved predictions to: {csv_path}")
 

@@ -14,6 +14,7 @@ class TMQMGStarDataset(InMemoryDataset):
     def __init__(
         self,
         root: str,
+        filter_type,
         block_3_only: bool = False,
         y_columns: Optional[Sequence[str]] = None,
         extra_fields: Optional[Sequence[str]] = None,
@@ -25,8 +26,11 @@ class TMQMGStarDataset(InMemoryDataset):
         prediction_params: Optional[dict] = None,
         vis_range: Tuple[float, float] = (380.0, 750.0),
         num_states: int = 10,
-        filter_states: int = 0
-    ):
+        filter_states: int = 0,
+        min_f_value: float = 0.0002,
+        lorenzian: bool = False,
+    ):  
+        self.filter_type = filter_type
         self.y_columns = list(y_columns) if y_columns else []
         self.extra_fields = list(extra_fields) if extra_fields else []
         self.block_3_only = block_3_only
@@ -37,8 +41,9 @@ class TMQMGStarDataset(InMemoryDataset):
         self.min_lambda, self.max_lambda = vis_range
         self.num_states = num_states
         self.filter_states = filter_states
-
-        if self.prediction_type not in {"pairs", "vector"}:
+        self.min_f_value = min_f_value
+        self.lorenzian = lorenzian
+        if self.prediction_type not in {"pairs", "vector", 'lambda_binary'}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
         super().__init__(root=root, transform=transform, pre_transform=pre_transform)
@@ -91,6 +96,7 @@ class TMQMGStarDataset(InMemoryDataset):
             f"num_states-{self.num_states}_"
             f"filter_states-{self.filter_states}_"
             f"vis_range-{self.min_lambda}-{self.max_lambda}_"
+            f"filter_type-{self.filter_type}_min_f_val{self.min_f_value}_"
             f"pre{pre_transform}.pt"
         )
 
@@ -103,12 +109,20 @@ class TMQMGStarDataset(InMemoryDataset):
     def download(self):
         pass
 
+    
+    
     def _filter_visible_transitions(self, row: pd.Series) -> List[Tuple[float, float]]:
         """
         Return the first states (lambda, f) pairs that are **all** inside the visible range.
         If any of the first states is missing or outside the range → return [] (molecule is dropped).
         """
+        #TODO Fix this implementaion to be able to cases like lambda_2 - lambda_11 within range would also pass
+        # so for num.states = 10 check lambda_1 - lambda_10, if there is no all in the range due to the lambda_1 return []
+        # if the lambda_10 is ourside of range then check next iteration with lambda_2 and lambda_11 etc.
+        
+        
         transitions = []
+        # for i in range(1, self.num_states+1):
         for i in range(1, self.num_states+1):
             lam_col = f"lambda_{i}_gasphase"
             f_col = f"f_{i}_gasphase"
@@ -128,17 +142,43 @@ class TMQMGStarDataset(InMemoryDataset):
                 return []
             transitions.append((lam, f))
         return transitions
+        # raise NotImplementedError()
+    
+    def _select_all_samples(self, row: pd.Series) -> List[Tuple[float, float]]:
+        """
+        Return the first states (lambda, f) pairs that are **all** inside the visible range.
+        If any of the first states is missing or outside the range → return [] (molecule is dropped).
+        """
+        transitions = []
+        for i in range(1, 31):
+            lam_col = f"lambda_{i}_gasphase"
+            f_col = f"f_{i}_gasphase"
+            lam = row[lam_col]
+            f = row[f_col]
+            lam, f = float(lam), float(f)
+            transitions.append((lam, f))
+        return transitions
+    
+    def filter_data_with_criterion(self, row: pd.Series, filter_type: str):
+        if filter_type == "all_visible_lambdas":
+            return self._filter_visible_transitions(row)
+        elif filter_type == 'one_visible_lambda':
+            raise NotImplementedError()
+        elif filter_type == 'all_samples':
 
-    def _build_top_pairs(self, transitions: List[Tuple[float, float]], num_pairs: int = 10) -> torch.Tensor:
+            return self._select_all_samples(row)
+        else: 
+            raise ValueError()
+
+    def _build_top_pairs(self, transitions: List[Tuple[float, float]], num_pairs: int = 10, min_f_value: float = 0) -> torch.Tensor:
         """First-k absorptions (by input order) in visible range → flat vector [λ1, f1, λ2, f2, ...]."""
         if not transitions:
             return torch.zeros(1, num_pairs * 2, dtype=torch.float32)
 
-        selected = transitions[:num_pairs]
-
         vec = []
-        for lam, f in selected:
-            vec.extend([lam, f])
+        for lam, f in transitions:
+            if len(vec) < num_pairs and f > min_f_value:
+                vec.extend([lam, f])
 
         while len(vec) < num_pairs * 2:
             vec.extend([0.0, 0.0])
@@ -148,19 +188,57 @@ class TMQMGStarDataset(InMemoryDataset):
     def _build_absorption_vector(
         self,
         transitions: List[Tuple[float, float]],
-        wavelength_range: Tuple[float, float]
+        wavelength_range: Tuple[float, float],
+        lorenzian: bool = False,
     ) -> torch.Tensor:
-        """Histogram-style discrete spectrum."""
-        num_bins = int(wavelength_range[1] - wavelength_range[0])
+        """Build discrete absorption spectrum as histogram or Lorentzian-broadened vector."""
         start, end = wavelength_range
+        num_bins = int(end - start)
+        lam_grid = np.linspace(start, end, num_bins)
         hist = np.zeros(num_bins)
 
-        for lam, f in transitions:
-            if start <= lam <= end:
-                idx = int((lam - start) / (end - start) * num_bins)
-                idx = min(max(idx, 0), num_bins - 1)
-                hist[idx] += f
+        if not lorenzian:
+            for lam, f in transitions:
+                if start <= lam <= end:
+                    idx = int((lam - start) / (end - start) * num_bins)
+                    idx = min(max(idx, 0), num_bins - 1)
+                    hist[idx] += f
+        else:
+            gamma = 2.0 
+            for lam0, f in transitions:
+                hist += f * (1/np.pi) * (gamma / ((lam_grid - lam0)**2 + gamma**2))
+
         return torch.tensor(hist, dtype=torch.float32).unsqueeze(0)
+
+
+    def _build_lambda_binary(self, transitions: List[Tuple[float, float]], num_pairs: int = 10, min_f_value: float = 0) -> torch.Tensor:
+        if not transitions:
+            return torch.zeros(1, num_pairs, dtype=torch.float32)
+
+        vec = []
+        for lam, f in transitions:
+            if len(vec) < num_pairs and f > min_f_value:
+                vec.extend([lam])
+
+        while len(vec) < num_pairs:
+            vec.extend([0.0])
+
+        return torch.tensor([vec], dtype=torch.float32)
+
+    def _prepare_the_output_format(self, transitions):
+        if not self.prediction_type in {"pairs", "vector", "lambda_binary"}:
+            raise ValueError('prediction type did not mach: ', " pairs ", " vector ", " lambda_binary")
+        if self.prediction_type == "pairs":
+            num_pairs = self.num_states
+            min_f_value = self.min_f_value
+            return self._build_top_pairs(transitions, num_pairs=num_pairs,min_f_value=min_f_value)
+
+        elif self.prediction_type == 'vector':
+            vector_range = self.prediction_params["range"]
+            return self._build_absorption_vector(transitions, vector_range, self.lorenzian)
+        elif self.prediction_type == 'lambda_binary':
+            return self._build_lambda_binary(transitions, num_pairs=self.num_states, min_f_value=self.min_f_value)
+
 
     def process(self):
         base_csv_path = os.path.join(self.root, self._csv_filename())
@@ -216,24 +294,10 @@ class TMQMGStarDataset(InMemoryDataset):
             origin_id = None if pd.isna(row["origin_ID"]) else str(row["origin_ID"])
             csd_code = None if pd.isna(row["CSD_code"]) else str(row["CSD_code"])
             kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
-            if self.prediction_type in {"pairs", "vector"}:
-                transitions = self._filter_visible_transitions(row)
-                if not transitions:
-                    continue
-                if self.prediction_type == "pairs":
-                    try:
-                        num_pairs = self.num_states
-                        y = self._build_top_pairs(transitions, num_pairs=num_pairs)
-                    except KeyError:
-                        print("Num pairs not defined")
-                else:
-                    try:
-                        vector_range = self.prediction_params["range"]
-                        y = self._build_absorption_vector(transitions, vector_range)
-                    except KeyError:
-                        print("Range not defined")
-            else:
-                y = None
+            transitions = self.filter_data_with_criterion(row,self.filter_type)
+            if not transitions:
+                continue
+            y = self._prepare_the_output_format(transitions)
             if y is not None:
                 kwargs["y"] = y
             for col in self.extra_fields:
@@ -252,10 +316,6 @@ class TMQMGStarDataset(InMemoryDataset):
             if self.pre_transform:
                 data = self.pre_transform(data)
             data_list.append(data)
-
-            # except Exception as e:
-            #     print(f"Skipping row {i}: {e}")
-            #     continue
 
         if not data_list:
             raise RuntimeError("No valid molecules processed.")
