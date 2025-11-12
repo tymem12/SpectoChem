@@ -4,6 +4,8 @@ import torch
 
 from torchmetrics import Metric, MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score
 
+from gjepa.models.predictors.spectral_loss import sid, jsd, smse, wasserstein
+
 class StandardizedMAE(Metric):
     full_state_update = False
 
@@ -66,8 +68,6 @@ def get_default_regression_metrics(
         metrics = _get_multivariate_regression_metrics(output_dim, y_std=y_std, **kwargs)
 
         if prediction_type == "vector":
-            from gjepa.metrics.spectral_loss import sid, jsd, smse, wasserstein
-
             spectral_metrics = {
                 "SID": SpectralMetric(sid),
                 "JSD": SpectralMetric(jsd),

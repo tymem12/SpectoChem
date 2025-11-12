@@ -38,7 +38,8 @@ class SupervisedGraphLevelGNN(LightningModule):
         if task_type.endswith("regression"):
             predictor_cls = LinearRegressor
             predictor_kwargs = dict(
-                prediction_type=self._get_prediction_type()
+                prediction_type=self._get_prediction_type(),
+                #spectral_loss="sid"
             )
         else:
             predictor_cls = LinearClassifier
