@@ -39,7 +39,8 @@ class SupervisedGraphLevelGNN(LightningModule):
             predictor_cls = LinearRegressor
             predictor_kwargs = dict(
                 prediction_type=self._get_prediction_type(),
-                #spectral_loss="sid"
+                #spectral_loss="sid",
+                #threshold=1e-8
             )
         else:
             predictor_cls = LinearClassifier
