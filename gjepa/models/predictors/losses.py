@@ -3,7 +3,7 @@ from typing import Callable, Literal, Optional
 from torch import nn, Tensor
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, L1Loss, MSELoss
 
-from gjepa.models.predictors.spectral_loss import sid, jsd, smse, wasserstein
+from gjepa.utils.spectral_loss import sid, jsd, smse, wasserstein
 
 class SpectralLoss(nn.Module):
     """

@@ -4,7 +4,7 @@ import torch
 
 from torchmetrics import Metric, MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score
 
-from gjepa.models.predictors.spectral_loss import sid, jsd, smse, wasserstein
+from gjepa.utils.spectral_loss import sid, jsd, smse, wasserstein
 
 class StandardizedMAE(Metric):
     full_state_update = False
