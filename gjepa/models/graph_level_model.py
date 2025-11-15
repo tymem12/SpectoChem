@@ -119,9 +119,9 @@ class SupervisedGraphLevelGNN(LightningModule):
             # If the metric returns a tensor with >0 dims (e.g., per-target metrics)
             if torch.is_tensor(value) and value.ndim > 0:
                 for i, v in enumerate(value):
-                    log_dict[f"{split}/{name}_{i}"] = v
+                    log_dict[f"{name}_{i}"] = v
             else:
-                log_dict[f"{split}/{name}"] = value
+                log_dict[name] = value
 
         # Log to TensorBoard
         self.log_dict(log_dict, batch_size=len(y_gt))
