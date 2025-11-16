@@ -74,7 +74,7 @@ def get_default_regression_metrics(
                 "SMSE": SpectralMetric(smse),
                 "Wasserstein": SpectralMetric(wasserstein),
             }
-            metrics.update(spectral_metrics)
+            metrics.add_metrics(spectral_metrics)
     else:
         raise ValueError(f"Invalid `task_type` for regression: {task_type!r}")
 
