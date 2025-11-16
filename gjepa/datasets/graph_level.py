@@ -22,6 +22,7 @@ from gjepa.utils.pos_encoding import attach_pe_to_dataset_inplace
 from gjepa.utils.graph_level import split_dataset
 import torch.nn.functional as F
 from gjepa.datasets.cv_vis.tmqmg_star import TMQMGStarDataset
+from gjepa.datasets.cv_vis.standarizer_singleton import StandarizerSingletonF, StandarizerSingletonLambda
 
 def load_graph(
     root_dir: Path,
@@ -106,12 +107,180 @@ class GraphLevelDataModule(GraphDataModule):
             self.val_ds   = Subset(dataset, dataset.split_indices["val"])
             self.test_ds  = Subset(dataset, dataset.split_indices["test"])
 
+        print(self.test_ds[0].y)
+
+        self._standarize_output(type=self.config.additional_loading_params['prediction_type'],
+                                standarize_lambda=self.config.additional_loading_params['standarize_lambda'],
+                                standarize_f=self.config.additional_loading_params['standarize_f'])
         print(f"Loaded dataset '{name}' with {len(dataset)} graphs.")
         print(f'len of train is {len(self.train_ds)}')
         print(f'len of val is {len(self.val_ds)}')
         print(f'len of test is {len(self.test_ds)}')
 
-        print(dataset[0])
+        print(self.test_ds[0].y)
+
+    def _standarize_output(self, type: str, standarize_lambda: bool, standarize_f: bool):
+        if self.train_ds is None:
+            raise RuntimeError("train_ds is not initialized. Call setup() before _standarize_output().")
+
+        if type == "pairs":
+            if not standarize_lambda and not standarize_f:
+                return  # no-op if both False
+
+            lambda_vals = []
+            f_vals = []
+
+            for data_element in self.train_ds:
+                y = data_element.y.view(-1)
+
+                for idx, val in enumerate(y):
+                    if idx % 2 == 0:
+                        if standarize_lambda:
+                            lambda_vals.append(val.item())
+                    else:
+                        if standarize_f:
+                            f_vals.append(val.item())
+
+            lambda_mean = lambda_std = None
+            f_mean = f_std = None
+
+            if standarize_lambda:
+                if len(lambda_vals) == 0:
+                    raise RuntimeError("No lambda values found in train set.")
+                lambda_tensor = torch.tensor(lambda_vals, dtype=torch.float32)
+                lambda_mean = lambda_tensor.mean()
+                lambda_std  = lambda_tensor.std(unbiased=False)
+                StandarizerSingletonLambda.set_values(mean_lambda=lambda_mean, std_lambda=lambda_std)
+
+            if standarize_f:
+                if len(f_vals) == 0:
+                    raise RuntimeError("No f values found in train set.")
+                f_tensor = torch.tensor(f_vals, dtype=torch.float32)
+                f_mean = f_tensor.mean()
+                f_std  = f_tensor.std(unbiased=False)
+                StandarizerSingletonF.set_values(mean_f=f_mean, std_f=f_std)
+
+
+            self._y_mean = torch.tensor([
+                lambda_mean if lambda_mean is not None else 0.0,
+                f_mean if f_mean is not None else 0.0
+            ])
+            self._y_std = torch.tensor([
+                lambda_std if lambda_std is not None else 1.0,
+                f_std if f_std is not None else 1.0
+            ])
+
+            def _standardize_dataset(ds):
+                if ds is None:
+                    return None
+                standardized = []
+                for i in range(len(ds)):
+                    data = ds[i].clone()
+                    y = data.y.view(-1).clone()
+                    for idx in range(y.size(0)):
+                        if idx % 2 == 0:
+                            if standarize_lambda:
+                                y[idx] = (y[idx] - lambda_mean) / (lambda_std + 1e-8)
+                        else:
+                            # f
+                            if standarize_f:
+                                y[idx] = (y[idx] - f_mean) / (f_std + 1e-8)
+                    data.y = y.view_as(data.y)
+                    standardized.append(data)
+                return standardized
+
+            self.train_ds = _standardize_dataset(self.train_ds)
+            self.val_ds   = _standardize_dataset(self.val_ds)
+            self.test_ds  = _standardize_dataset(self.test_ds)
+            return
+
+        if type == "vector":
+            if not standarize_f:
+                return
+            f_vals = []
+
+            for data_element in self.train_ds:
+                y = data_element.y.view(-1)
+                for val in y:
+                    if val.item() != 0:
+                        f_vals.append(val.item())
+
+            if len(f_vals) == 0:
+                raise RuntimeError("No non-zero f values found in train set for 'vector' standardization.")
+
+            f_tensor = torch.tensor(f_vals, dtype=torch.float32)
+            f_mean = f_tensor.mean()
+            f_std = f_tensor.std(unbiased=False)
+            StandarizerSingletonF.set_values(mean_f=f_mean, std_f=f_std)
+
+            self._y_mean = f_mean
+            self._y_std = f_std
+
+            def _standardize_dataset(ds):
+                if ds is None:
+                    return None
+                standardized = []
+                for i in range(len(ds)):
+                    data = ds[i].clone()
+                    y = data.y.view(-1).clone()
+
+                    for idx in range(y.size(0)):
+                        # only standardize non-zero values
+                        if y[idx].item() != 0:
+                            y[idx] = (y[idx] - f_mean) / (f_std + 1e-8)
+
+                    data.y = y.view_as(data.y)
+                    standardized.append(data)
+                return standardized
+
+            self.train_ds = _standardize_dataset(self.train_ds)
+            self.val_ds = _standardize_dataset(self.val_ds)
+            self.test_ds = _standardize_dataset(self.test_ds)
+            return
+
+        if type == "lambda_binary":
+            if not standarize_lambda:
+                return
+
+            lambda_vals = []
+
+            for data_element in self.train_ds:
+                y = data_element.y.view(-1)
+                for val in y:
+                    lambda_vals.append(val.item())
+
+            if len(lambda_vals) == 0:
+                raise RuntimeError("No lambda values found in train set for 'lambda_binary' standardization.")
+
+            lambda_tensor = torch.tensor(lambda_vals, dtype=torch.float32)
+            lambda_mean = lambda_tensor.mean()
+            lambda_std = lambda_tensor.std(unbiased=False)
+            StandarizerSingletonLambda.set_values(mean_lambda=lambda_mean, std_lambda=lambda_std)
+
+            self._y_mean = lambda_mean
+            self._y_std = lambda_std
+
+            def _standardize_dataset(ds):
+                if ds is None:
+                    return None
+                standardized = []
+                for i in range(len(ds)):
+                    data = ds[i].clone()
+                    y = data.y.view(-1).clone()
+
+                    for idx in range(y.size(0)):
+                        y[idx] = (y[idx] - lambda_mean) / (lambda_std + 1e-8)
+
+                    data.y = y.view_as(data.y)
+                    standardized.append(data)
+                return standardized
+
+            self.train_ds = _standardize_dataset(self.train_ds)
+            self.val_ds = _standardize_dataset(self.val_ds)
+            self.test_ds = _standardize_dataset(self.test_ds)
+            return
+        raise ValueError(f"Unknown standarization type: {type!r}. Expected 'pairs', 'vector', or 'lambda_binary'.")
+
 
 
         

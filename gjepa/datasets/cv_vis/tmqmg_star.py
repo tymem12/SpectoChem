@@ -1,6 +1,4 @@
 import os
-import json
-import hashlib
 from typing import Optional, Sequence, Tuple, List
 import torch
 import pandas as pd
@@ -26,9 +24,12 @@ class TMQMGStarDataset(InMemoryDataset):
         prediction_params: Optional[dict] = None,
         vis_range: Tuple[float, float] = (380.0, 750.0),
         num_states: int = 10,
-        filter_states: int = 0,
         min_f_value: float = 0.0002,
         lorenzian: bool = False,
+        sort_by_max_f: bool = True,
+        standarize_lambda: bool = False,
+        standarize_f: bool = False
+
     ):  
         self.filter_type = filter_type
         self.y_columns = list(y_columns) if y_columns else []
@@ -40,9 +41,12 @@ class TMQMGStarDataset(InMemoryDataset):
         self.prediction_params = prediction_params or {}
         self.min_lambda, self.max_lambda = vis_range
         self.num_states = num_states
-        self.filter_states = filter_states
         self.min_f_value = min_f_value
         self.lorenzian = lorenzian
+        self.sort_by_max_f = sort_by_max_f
+        self.standarize_lambda = standarize_lambda
+        self.standarize_f = standarize_f
+
         if self.prediction_type not in {"pairs", "vector", 'lambda_binary'}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
@@ -78,7 +82,6 @@ class TMQMGStarDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self) -> list[str]:
-        """Return a human-readable, unique filename based on configuration."""
         pred_type = self.prediction_type.replace(" ", "_")
         params_str = self.serialize_params_for_filename(self.prediction_params)
 
@@ -94,9 +97,11 @@ class TMQMGStarDataset(InMemoryDataset):
             f"tmqmg_block3-{self.block_3_only}_"
             f"{pred_type}_{params_str}_"
             f"num_states-{self.num_states}_"
-            f"filter_states-{self.filter_states}_"
             f"vis_range-{self.min_lambda}-{self.max_lambda}_"
             f"filter_type-{self.filter_type}_min_f_val{self.min_f_value}_"
+            f"sort_by_max_f-{self.sort_by_max_f}_"
+            f"standarize_lambda-{self.standarize_lambda}_"
+            f"standarize_f-{self.standarize_f}_"
             f"pre{pre_transform}.pt"
         )
 
@@ -109,80 +114,140 @@ class TMQMGStarDataset(InMemoryDataset):
     def download(self):
         pass
 
-    
-    
+
     def _filter_visible_transitions(self, row: pd.Series) -> List[Tuple[float, float]]:
-        """
-        Return the first states (lambda, f) pairs that are **all** inside the visible range.
-        If any of the first states is missing or outside the range → return [] (molecule is dropped).
-        """
-        #TODO Fix this implementaion to be able to cases like lambda_2 - lambda_11 within range would also pass
-        # so for num.states = 10 check lambda_1 - lambda_10, if there is no all in the range due to the lambda_1 return []
-        # if the lambda_10 is ourside of range then check next iteration with lambda_2 and lambda_11 etc.
-        
-        
-        transitions = []
-        # for i in range(1, self.num_states+1):
-        for i in range(1, self.num_states+1):
+
+        candidates: List[Tuple[float, float, int]] = []  # (lambda, f, i)
+
+        for i in range(1,31):
             lam_col = f"lambda_{i}_gasphase"
             f_col = f"f_{i}_gasphase"
 
-            if lam_col not in row or f_col not in row:
-                return []
+            lam = row[lam_col]
+            f = row[f_col]
+            lam = float(lam)
+            f = float(f)
+
+            if not (self.min_lambda <= lam <= self.max_lambda):
+                continue
+
+            if not (f >= self.min_f_value):
+                continue
+
+            candidates.append((lam, f, i))
+
+        if len(candidates) < self.num_states:
+            return []
+
+        if self.sort_by_max_f:
+            candidates_sorted = sorted(candidates, key=lambda x: (-x[1], x[2]))
+            chosen = candidates_sorted[: self.num_states]
+        else:
+            candidates_sorted = sorted(candidates, key=lambda x: x[2])
+            chosen = candidates_sorted[: self.num_states]
+
+        result = [(lam, f) for (lam, f, _) in chosen]
+        return result
+
+    
+
+
+    def _select_all_transitions(self, row: pd.Series) -> List[Tuple[float, float]]:
+
+        candidates: List[Tuple[float, float, int]] = []  # (lambda, f, i)
+
+        for i in range(1,31):
+            lam_col = f"lambda_{i}_gasphase"
+            f_col = f"f_{i}_gasphase"
 
             lam = row[lam_col]
             f = row[f_col]
+            lam = float(lam)
+            f = float(f)
 
-            if pd.isna(lam) or pd.isna(f):
-                return []
+            if f < self.min_f_value:
+                continue
 
-            lam, f = float(lam), float(f)
+            candidates.append((lam, f, i))
 
-            if i <= self.filter_states and not (self.min_lambda <= lam <= self.max_lambda):
-                return []
-            transitions.append((lam, f))
-        return transitions
-        # raise NotImplementedError()
+        if not candidates:
+            return []
+
+        if self.sort_by_max_f:
+            candidates_sorted = sorted(candidates, key=lambda x: (-x[1], x[2]))
+            chosen = candidates_sorted[: self.num_states]
+        else:
+            candidates_sorted = sorted(candidates, key=lambda x: x[2])
+            chosen = candidates_sorted[: self.num_states]
+
+        result = [(lam, f) for (lam, f, _) in chosen]
+        return result
     
-    def _select_all_samples(self, row: pd.Series) -> List[Tuple[float, float]]:
-        """
-        Return the first states (lambda, f) pairs that are **all** inside the visible range.
-        If any of the first states is missing or outside the range → return [] (molecule is dropped).
-        """
-        transitions = []
+
+    def _filter_at_least_one_visible_transition(self, row: pd.Series) -> List[Tuple[float, float]]:
+
+        candidates: List[Tuple[float, float, int]] = []
+        has_visible = False
+        visible_lambda = None
+        visible_f = None
         for i in range(1, 31):
             lam_col = f"lambda_{i}_gasphase"
             f_col = f"f_{i}_gasphase"
+
             lam = row[lam_col]
             f = row[f_col]
-            lam, f = float(lam), float(f)
-            transitions.append((lam, f))
-        return transitions
+            lam = float(lam)
+            f = float(f)
+
+            if f >= self.min_f_value:
+                candidates.append((lam, f, i))
+
+                if self.min_lambda <= lam <= self.max_lambda:
+                    has_visible = True
+                    visible_lambda = lam
+                    visible_f = f
+
+        if not has_visible:
+            return []
+
+        if not candidates:
+            return []
+
+        if self.sort_by_max_f:
+            candidates_sorted = sorted(candidates, key=lambda x: (-x[1], x[2]))
+            chosen = candidates_sorted[: self.num_states]
+        else:
+            candidates_sorted = sorted(candidates, key=lambda x: x[2])
+            chosen = candidates_sorted[: self.num_states]
+
+        result = [(lam, f) for (lam, f, _) in chosen]
+        lambdas_selected = [lam for (lam, _) in result]
+        if visible_lambda in lambdas_selected:
+            return result
+        else:
+            del result[-1]
+            result.append((visible_lambda, visible_f))
+        return result
+
+
+
     
     def filter_data_with_criterion(self, row: pd.Series, filter_type: str):
         if filter_type == "all_visible_lambdas":
             return self._filter_visible_transitions(row)
         elif filter_type == 'one_visible_lambda':
-            raise NotImplementedError()
+            return self._filter_at_least_one_visible_transition(row)
         elif filter_type == 'all_samples':
-
-            return self._select_all_samples(row)
+            return self._select_all_transitions(row)
         else: 
             raise ValueError()
 
     def _build_top_pairs(self, transitions: List[Tuple[float, float]], num_pairs: int = 10, min_f_value: float = 0) -> torch.Tensor:
-        """First-k absorptions (by input order) in visible range → flat vector [λ1, f1, λ2, f2, ...]."""
-        if not transitions:
-            return torch.zeros(1, num_pairs * 2, dtype=torch.float32)
 
         vec = []
         for lam, f in transitions:
-            if len(vec) < num_pairs and f > min_f_value:
+            if len(vec) < num_pairs * 2:
                 vec.extend([lam, f])
-
-        while len(vec) < num_pairs * 2:
-            vec.extend([0.0, 0.0])
-
         return torch.tensor([vec], dtype=torch.float32)
 
     def _build_absorption_vector(
@@ -217,11 +282,8 @@ class TMQMGStarDataset(InMemoryDataset):
 
         vec = []
         for lam, f in transitions:
-            if len(vec) < num_pairs and f > min_f_value:
+            if len(vec) < num_pairs:
                 vec.extend([lam])
-
-        while len(vec) < num_pairs:
-            vec.extend([0.0])
 
         return torch.tensor([vec], dtype=torch.float32)
 
@@ -284,7 +346,6 @@ class TMQMGStarDataset(InMemoryDataset):
         data_list: List[Data] = []
 
         for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing"):
-            # try:
             num_atoms = int(row["num_atoms"]) if "num_atoms" in row and not pd.isna(row["num_atoms"]) else None
             pos = _parse_coords(row["atom_coords"], expected_n=num_atoms)
             z = _parse_atom_types(row["atom_types"])

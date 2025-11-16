@@ -14,11 +14,18 @@ additional_loading_params:
   prediction_type: vector
   filter_states: 10
   vis_range: [380, 750]
-  num_states: 10
-  filter_type: all_samples    #all_samples   all_visible_lambdas
+  num_states: 4
+  filter_type: all_visible_lambdas    #all_samples   all_visible_lambdas
   prediction_params:
     range: [380, 750]
   block_3_only: True
-  lorenzian: True
+  lorenzian: false
+  sort_by_max_f: false
+  min_f_value: -1
+  standarize_f: false
+  standarize_lambda: false
+
+
+
   
 

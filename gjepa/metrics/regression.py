@@ -52,7 +52,7 @@ class SpectralMetric(Metric):
 def get_default_regression_metrics(
     task_type: Literal["regression", "multiregression"], output_dim: int,
     y_std: torch.Tensor | None = None,
-    prediction_type: Optional[Literal["pairs", "vector"]] = None,
+    prediction_type: Optional[Literal["pairs", "vector", 'lambda_binary']] = None,
     **kwargs
 ) -> MetricCollection:
     """Provides metrics suitable for regression tasks (univariate or multivariate)."""

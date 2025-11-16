@@ -14,7 +14,7 @@ class RegressorBase(PredictorBase, ABC):
         out_channels: int,
         task_type: Literal["regression", "multiregression"],
         y_std=None,
-        prediction_type: Optional[Literal["pairs", "vector"]] = None,
+        prediction_type: Optional[Literal["pairs", "vector", 'lambda_binary']] = None,
         spectral_loss: Optional[str] = None,
         **loss_kwargs
     ):
@@ -50,7 +50,7 @@ class LinearRegressor(RegressorBase):
         in_channels: int, out_channels: int,
         task_type: TaskType,
         y_std=None,
-        prediction_type: Optional[Literal["pairs", "vector"]] = None,
+        prediction_type: Optional[Literal["pairs", "vector", 'lambda_binary']] = None,
         spectral_loss: Optional[str] = None,
         **loss_kwargs
     ):
