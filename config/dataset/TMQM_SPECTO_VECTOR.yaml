@@ -12,7 +12,6 @@ metric_mode: min
 main_metric: MAE
 additional_loading_params: 
   prediction_type: vector
-  filter_states: 10
   vis_range: [380, 750]
   num_states: 4
   filter_type: all_visible_lambdas    #all_samples   all_visible_lambdas
