@@ -5,15 +5,26 @@ transforms:
   AddEdgesAndDistances:
     cutoff: 5.0
 in_channels: 1
-prediction_type: vector
-prediction_params:
-  range: (380, 750)
-num_states: 10
-task_type: regression
-main_metric: MAE
-metric_mode: min
+out_channels: 370
+task_type: multiregression
 split_ratios: [0.8, 0.1]
-vis_range: [380, 750]
-filter_states: 10
-subset: "cv_vis"
+metric_mode: min
+main_metric: MAE
+additional_loading_params: 
+  prediction_type: vector
+  vis_range: [380, 750]
+  num_states: 4
+  filter_type: all_visible_lambdas    #all_samples   all_visible_lambdas
+  prediction_params:
+    range: [380, 750]
+  block_3_only: True
+  lorenzian: false
+  sort_by_max_f: false
+  min_f_value: -1
+  standarize_f: false
+  standarize_lambda: false
+
+
+
+  
 

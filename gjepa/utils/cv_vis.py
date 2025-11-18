@@ -1,16 +1,16 @@
-
-# custom_chemical_dataset.py
 from __future__ import annotations
 import os
 import json
 import ast
 import hashlib
-from typing import List, Optional, Sequence, Union, Any, Dict
+from typing import List, Optional, Sequence, Union, Any, Dict, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 import torch
 from torch import Tensor
-import pandas as pd
-from torch_geometric.data import InMemoryDataset, Data
 
 _SYMBOL2Z = {
     "H":1,"He":2,"Li":3,"Be":4,"B":5,"C":6,"N":7,"O":8,"F":9,"Ne":10,"Na":11,"Mg":12,"Al":13,
@@ -124,3 +124,316 @@ def _parse_atom_types(val: Any) -> Tensor:
 
 def _to_float_vec(vals: Sequence[Any]) -> Tensor:
     return torch.tensor([float(v) for v in vals], dtype=torch.float32)
+
+
+
+
+
+def _plot_pairs_graph_with_predictions(
+    data: pd.DataFrame,
+    save_path: str,
+    range_x: Tuple[float, float],
+    num_samples: int = 50
+) -> None:
+    out_dir = os.path.join(save_path, "saved_plots")
+    os.makedirs(out_dir, exist_ok=True)
+
+    target_cols = [c for c in data.columns if c.startswith("target_")]
+    prediction_cols = [c for c in data.columns if c.startswith("prediction_")]
+
+    def _sort_key(col_name: str) -> int:
+        return int(col_name.split("_")[1])
+
+    target_cols = sorted(target_cols, key=_sort_key)
+    prediction_cols = sorted(prediction_cols, key=_sort_key)
+
+    num_targets = len(target_cols)
+    num_preds = len(prediction_cols)
+
+    if num_preds != num_targets:
+        raise ValueError()
+
+    if num_targets % 2 != 0:
+        raise ValueError()
+
+    num_pairs = num_targets // 2
+    num_samples = min(len(data), num_samples)
+    for _, row in list(data.iterrows())[:num_samples]:
+        origin_id = row["origin_id"]
+
+        x_targets = []
+        y_targets = []
+        x_preds = []
+        y_preds = []
+
+        for pair_idx in range(num_pairs):
+            even_idx = 2 * pair_idx
+            odd_idx = 2 * pair_idx + 1
+
+            t_x = row[target_cols[even_idx]]
+            t_y = row[target_cols[odd_idx]]
+            p_x = row[prediction_cols[even_idx]]
+            p_y = row[prediction_cols[odd_idx]]
+
+            x_targets.append(t_x)
+            y_targets.append(t_y)
+            x_preds.append(p_x)
+            y_preds.append(p_y)
+
+        if len(x_targets) == 0:
+            continue
+
+        plt.figure(figsize=(8, 4))
+        for i, (x, y) in enumerate(zip(x_targets, y_targets)):
+            plt.vlines(
+                x,
+                0,
+                y,
+                color="red",
+                alpha=0.7,
+                linewidth=2,
+                label="target" if i == 0 else None,
+            )
+
+        for i, (x, y) in enumerate(zip(x_preds, y_preds)):
+            plt.vlines(
+                x,
+                0,
+                y,
+                color="blue",
+                alpha=0.7,
+                linewidth=2,
+                label="prediction" if i == 0 else None,
+            )
+
+        x_min, x_max = range_x
+        plt.xlim(x_min, x_max)
+
+        all_y = np.array(y_targets + y_preds)
+        y_max = float(all_y.max()) if all_y.size > 0 else 1.0
+        plt.ylim(0, y_max * 1.05)
+
+        plt.xlabel("x")
+        plt.ylabel("value (y)")
+        plt.title(f"Pairs plot for {origin_id}")
+        plt.legend()
+
+        filename = f"{origin_id}.png"
+        filepath = os.path.join(out_dir, filename)
+        plt.tight_layout()
+        plt.savefig(filepath, dpi=150)
+        plt.close()
+
+        print("saves to:", filepath)
+
+
+def _plot_lambda_binary_predictions(
+    data: pd.DataFrame,
+    save_path: str,
+    range_x: Tuple[float, float],
+    num_samples: int = 50
+) -> None:
+    out_dir = os.path.join(save_path, "saved_plots")
+    os.makedirs(out_dir, exist_ok=True)
+
+    target_cols = [c for c in data.columns if c.startswith("target_")]
+    prediction_cols = [c for c in data.columns if c.startswith("prediction_")]
+
+    def _sort_key(col_name: str) -> int:
+        return int(col_name.split("_")[1])
+
+    target_cols = sorted(target_cols, key=_sort_key)
+    prediction_cols = sorted(prediction_cols, key=_sort_key)
+
+    num_targets = len(target_cols)
+    num_preds = len(prediction_cols)
+
+    if num_preds != num_targets:
+        raise ValueError()
+
+    num_samples = min(len(data), num_samples)
+    for _, row in list(data.iterrows())[:num_samples]:
+        origin_id = row["origin_id"]
+
+        x_targets = []
+        y_targets = []
+        x_preds = []
+        y_preds = []
+
+        for pair_idx in range(num_targets):
+
+            t_x = row[target_cols[pair_idx]]
+            p_x = row[prediction_cols[pair_idx]]
+
+            x_targets.append(t_x)
+            y_targets.append(1)
+            x_preds.append(p_x)
+            y_preds.append(1)
+
+        if len(x_targets) == 0:
+            continue
+
+        plt.figure(figsize=(8, 4))
+        for i, (x, y) in enumerate(zip(x_targets, y_targets)):
+            plt.vlines(
+                x,
+                0,
+                y,
+                color="red",
+                alpha=0.7,
+                linewidth=2,
+                label="target" if i == 0 else None,
+            )
+
+        for i, (x, y) in enumerate(zip(x_preds, y_preds)):
+            plt.vlines(
+                x,
+                0,
+                y,
+                color="blue",
+                alpha=0.7,
+                linewidth=2,
+                label="prediction" if i == 0 else None,
+            )
+
+        x_min, x_max = range_x
+        plt.xlim(x_min, x_max)
+
+        all_y = np.array(y_targets + y_preds)
+        y_max = float(all_y.max()) if all_y.size > 0 else 1.0
+        plt.ylim(0, y_max * 1.05)
+
+        plt.xlabel("x")
+        plt.ylabel("value (y)")
+        plt.title(f"Pairs plot for {origin_id}")
+        plt.legend()
+
+        filename = f"{origin_id}.png"
+        filepath = os.path.join(out_dir, filename)
+        plt.tight_layout()
+        plt.savefig(filepath, dpi=150)
+        plt.close()
+
+        print("saves to:", filepath)
+
+def _plot_vector_graph_with_predictions(
+    data: pd.DataFrame,
+    save_path: str,
+    range_x: Tuple[float, float],
+    num_samples: int = 50
+) -> None:
+    out_dir = os.path.join(save_path, "saved_plots")
+    os.makedirs(out_dir, exist_ok=True)
+
+    target_cols = [c for c in data.columns if c.startswith("target_")]
+    prediction_cols = [c for c in data.columns if c.startswith("prediction_")]
+
+    def _sort_key(col_name: str) -> int:
+        return int(col_name.split("_")[1])
+
+    target_cols = sorted(target_cols, key=_sort_key)
+    prediction_cols = sorted(prediction_cols, key=_sort_key)
+
+    num_targets = len(target_cols)
+    num_preds = len(prediction_cols)
+
+    if num_preds != num_targets:
+        raise ValueError()
+
+    x_min, x_max = range_x
+    x_values = np.linspace(x_min, x_max, num_targets)
+    num_samples = min(len(data), num_samples)
+    for _, row in list(data.iterrows())[:num_samples]:
+        origin_id = row["origin_id"]
+
+        y_targets = []
+        y_preds = []
+
+        for t_col, p_col in zip(target_cols, prediction_cols):
+            t_y = row[t_col]
+            p_y = row[p_col]
+
+            if pd.isna(t_y) or pd.isna(p_y):
+                y_targets.append(np.nan)
+                y_preds.append(np.nan)
+            else:
+                y_targets.append(t_y)
+                y_preds.append(p_y)
+
+        y_targets = np.array(y_targets, dtype=float)
+        y_preds = np.array(y_preds, dtype=float)
+
+        plt.figure(figsize=(8, 4))
+        first_target_drawn = False
+        for x, y in zip(x_values, y_targets):
+            if np.isnan(y):
+                continue
+            plt.vlines(
+                x,
+                0,
+                y,
+                color="red",
+                alpha=0.7,
+                linewidth=1.5,
+                label="target" if not first_target_drawn else None,
+            )
+            first_target_drawn = True
+
+        first_pred_drawn = False
+        for x, y in zip(x_values, y_preds):
+            if np.isnan(y):
+                continue
+            plt.vlines(
+                x,
+                0,
+                y,
+                color="blue",
+                alpha=0.7,
+                linewidth=1.5,
+                label="prediction" if not first_pred_drawn else None,
+            )
+            first_pred_drawn = True
+
+        plt.xlim(x_min, x_max)
+
+        all_y = np.concatenate(
+            [y_targets[~np.isnan(y_targets)], y_preds[~np.isnan(y_preds)]]
+        )
+        if all_y.size > 0:
+            y_max = float(all_y.max())
+        else:
+            y_max = 1.0
+        if y_max <= 0:
+            y_max = 1.0
+        plt.ylim(0, y_max * 1.05)
+
+        plt.xlabel("x")
+        plt.ylabel("value (y)")
+        plt.title(f"Vector plot for {origin_id}")
+        plt.legend()
+
+        filename = f"{origin_id}_vector.png"
+        filepath = os.path.join(out_dir, filename)
+        plt.tight_layout()
+        plt.savefig(filepath, dpi=150)
+        plt.close()
+
+        print("saves to:", filepath)
+
+
+
+def plot_graph_with_predictions(data: pd.DataFrame, output_type: str, save_path: str, range: tuple, standarize_lambdas:bool = False):
+            # HARD CODED- REMOVE LATER IT WAS JUST FOR TEST:
+    mean_lambda: float = 280.097
+    std_lambda: float = 320.900
+    destandarize = lambda x : (x * std_lambda) + mean_lambda if standarize_lambdas else None
+    if output_type == 'vector':
+        _plot_vector_graph_with_predictions(data, save_path, range)
+
+    elif output_type == 'pairs':
+        _plot_pairs_graph_with_predictions(data, save_path, range)
+
+    elif output_type == 'lambda_binary':
+        _plot_lambda_binary_predictions(data, save_path, range)
+
+

@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Literal
+from typing import Literal, Optional
 
 from torch import Tensor, nn
 
@@ -9,16 +9,30 @@ from gjepa.models.predictors import PredictorBase
 from gjepa.models.predictors.losses import get_regression_loss
 
 class RegressorBase(PredictorBase, ABC):
-    def __init__(self, out_channels: int, task_type: Literal["regression", "multiregression"], y_std=None):
+    def __init__(
+        self,
+        out_channels: int,
+        task_type: Literal["regression", "multiregression"],
+        y_std=None,
+        prediction_type: Optional[Literal["pairs", "vector", 'lambda_binary']] = None,
+        spectral_loss: Optional[str] = None,
+        **loss_kwargs
+    ):
+        if prediction_type:
+            assert task_type == "multiregression"
+
+        if spectral_loss:
+            assert prediction_type == "vector"
+
         if task_type == "multiregression":
-            kwargs = dict(
+            metrics_kwargs = dict(
                 reduce_mean=True
             )
         else:
-            kwargs = {}
+            metrics_kwargs = {}
 
-        metrics = get_default_regression_metrics(task_type, out_channels, y_std=y_std, **kwargs)
-        loss = get_regression_loss(task_type)
+        metrics = get_default_regression_metrics(task_type, out_channels, y_std, prediction_type, **metrics_kwargs)
+        loss = get_regression_loss(task_type, spectral_loss, **loss_kwargs)
         super().__init__(loss, metrics)
 
         self.out_channels = out_channels
@@ -31,8 +45,16 @@ class RegressorBase(PredictorBase, ABC):
 
 
 class LinearRegressor(RegressorBase):
-    def __init__(self, in_channels: int, out_channels: int, task_type: TaskType, y_std=None):
-        super().__init__(out_channels, task_type, y_std=y_std)
+    def __init__(
+        self,
+        in_channels: int, out_channels: int,
+        task_type: TaskType,
+        y_std=None,
+        prediction_type: Optional[Literal["pairs", "vector", 'lambda_binary']] = None,
+        spectral_loss: Optional[str] = None,
+        **loss_kwargs
+    ):
+        super().__init__(out_channels, task_type, y_std, prediction_type, spectral_loss, **loss_kwargs)
         self.linear = nn.Linear(in_channels, out_channels)
 
 

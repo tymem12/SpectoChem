@@ -1,6 +1,4 @@
 import os
-import json
-import hashlib
 from typing import Optional, Sequence, Tuple, List
 import torch
 import pandas as pd
@@ -14,6 +12,7 @@ class TMQMGStarDataset(InMemoryDataset):
     def __init__(
         self,
         root: str,
+        filter_type,
         block_3_only: bool = False,
         y_columns: Optional[Sequence[str]] = None,
         extra_fields: Optional[Sequence[str]] = None,
@@ -25,8 +24,14 @@ class TMQMGStarDataset(InMemoryDataset):
         prediction_params: Optional[dict] = None,
         vis_range: Tuple[float, float] = (380.0, 750.0),
         num_states: int = 10,
-        filter_states: int = 0
-    ):
+        min_f_value: float = 0.0002,
+        lorenzian: bool = False,
+        sort_by_max_f: bool = True,
+        standarize_lambda: bool = False,
+        standarize_f: bool = False
+
+    ):  
+        self.filter_type = filter_type
         self.y_columns = list(y_columns) if y_columns else []
         self.extra_fields = list(extra_fields) if extra_fields else []
         self.block_3_only = block_3_only
@@ -36,9 +41,13 @@ class TMQMGStarDataset(InMemoryDataset):
         self.prediction_params = prediction_params or {}
         self.min_lambda, self.max_lambda = vis_range
         self.num_states = num_states
-        self.filter_states = filter_states
+        self.min_f_value = min_f_value
+        self.lorenzian = lorenzian
+        self.sort_by_max_f = sort_by_max_f
+        self.standarize_lambda = standarize_lambda
+        self.standarize_f = standarize_f
 
-        if self.prediction_type not in {"pairs", "vector"}:
+        if self.prediction_type not in {"pairs", "vector", 'lambda_binary'}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
         super().__init__(root=root, transform=transform, pre_transform=pre_transform)
@@ -73,7 +82,6 @@ class TMQMGStarDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self) -> list[str]:
-        """Return a human-readable, unique filename based on configuration."""
         pred_type = self.prediction_type.replace(" ", "_")
         params_str = self.serialize_params_for_filename(self.prediction_params)
 
@@ -89,8 +97,11 @@ class TMQMGStarDataset(InMemoryDataset):
             f"tmqmg_block3-{self.block_3_only}_"
             f"{pred_type}_{params_str}_"
             f"num_states-{self.num_states}_"
-            f"filter_states-{self.filter_states}_"
             f"vis_range-{self.min_lambda}-{self.max_lambda}_"
+            f"filter_type-{self.filter_type}_min_f_val{self.min_f_value}_"
+            f"sort_by_max_f-{self.sort_by_max_f}_"
+            f"standarize_lambda-{self.standarize_lambda}_"
+            f"standarize_f-{self.standarize_f}_"
             f"pre{pre_transform}.pt"
         )
 
@@ -103,64 +114,193 @@ class TMQMGStarDataset(InMemoryDataset):
     def download(self):
         pass
 
+
     def _filter_visible_transitions(self, row: pd.Series) -> List[Tuple[float, float]]:
-        """
-        Return the first states (lambda, f) pairs that are **all** inside the visible range.
-        If any of the first states is missing or outside the range → return [] (molecule is dropped).
-        """
-        transitions = []
-        for i in range(1, self.num_states+1):
+
+        candidates: List[Tuple[float, float, int]] = []  # (lambda, f, i)
+
+        for i in range(1,31):
             lam_col = f"lambda_{i}_gasphase"
             f_col = f"f_{i}_gasphase"
 
-            if lam_col not in row or f_col not in row:
-                return []
+            lam = row[lam_col]
+            f = row[f_col]
+            lam = float(lam)
+            f = float(f)
+
+            if not (self.min_lambda <= lam <= self.max_lambda):
+                continue
+
+            if not (f >= self.min_f_value):
+                continue
+
+            candidates.append((lam, f, i))
+
+        if len(candidates) < self.num_states:
+            return []
+
+        if self.sort_by_max_f:
+            candidates_sorted = sorted(candidates, key=lambda x: (-x[1], x[2]))
+            chosen = candidates_sorted[: self.num_states]
+        else:
+            candidates_sorted = sorted(candidates, key=lambda x: x[2])
+            chosen = candidates_sorted[: self.num_states]
+
+        result = [(lam, f) for (lam, f, _) in chosen]
+        return result
+
+    
+
+
+    def _select_all_transitions(self, row: pd.Series) -> List[Tuple[float, float]]:
+
+        candidates: List[Tuple[float, float, int]] = []  # (lambda, f, i)
+
+        for i in range(1,31):
+            lam_col = f"lambda_{i}_gasphase"
+            f_col = f"f_{i}_gasphase"
 
             lam = row[lam_col]
             f = row[f_col]
+            lam = float(lam)
+            f = float(f)
 
-            if pd.isna(lam) or pd.isna(f):
-                return []
+            if f < self.min_f_value:
+                continue
 
-            lam, f = float(lam), float(f)
+            candidates.append((lam, f, i))
 
-            if i <= self.filter_states and not (self.min_lambda <= lam <= self.max_lambda):
-                return []
-            transitions.append((lam, f))
-        return transitions
+        if not candidates:
+            return []
 
-    def _build_top_pairs(self, transitions: List[Tuple[float, float]], num_pairs: int = 10) -> torch.Tensor:
-        """First-k absorptions (by input order) in visible range → flat vector [λ1, f1, λ2, f2, ...]."""
-        if not transitions:
-            return torch.zeros(1, num_pairs * 2, dtype=torch.float32)
+        if self.sort_by_max_f:
+            candidates_sorted = sorted(candidates, key=lambda x: (-x[1], x[2]))
+            chosen = candidates_sorted[: self.num_states]
+        else:
+            candidates_sorted = sorted(candidates, key=lambda x: x[2])
+            chosen = candidates_sorted[: self.num_states]
 
-        selected = transitions[:num_pairs]
+        result = [(lam, f) for (lam, f, _) in chosen]
+        return result
+    
+
+    def _filter_at_least_one_visible_transition(self, row: pd.Series) -> List[Tuple[float, float]]:
+
+        candidates: List[Tuple[float, float, int]] = []
+        has_visible = False
+        visible_lambda = None
+        visible_f = None
+        for i in range(1, 31):
+            lam_col = f"lambda_{i}_gasphase"
+            f_col = f"f_{i}_gasphase"
+
+            lam = row[lam_col]
+            f = row[f_col]
+            lam = float(lam)
+            f = float(f)
+
+            if f >= self.min_f_value:
+                candidates.append((lam, f, i))
+
+                if self.min_lambda <= lam <= self.max_lambda:
+                    has_visible = True
+                    visible_lambda = lam
+                    visible_f = f
+
+        if not has_visible:
+            return []
+
+        if not candidates:
+            return []
+
+        if self.sort_by_max_f:
+            candidates_sorted = sorted(candidates, key=lambda x: (-x[1], x[2]))
+            chosen = candidates_sorted[: self.num_states]
+        else:
+            candidates_sorted = sorted(candidates, key=lambda x: x[2])
+            chosen = candidates_sorted[: self.num_states]
+
+        result = [(lam, f) for (lam, f, _) in chosen]
+        lambdas_selected = [lam for (lam, _) in result]
+        if visible_lambda in lambdas_selected:
+            return result
+        else:
+            del result[-1]
+            result.append((visible_lambda, visible_f))
+        return result
+
+
+
+    
+    def filter_data_with_criterion(self, row: pd.Series, filter_type: str):
+        if filter_type == "all_visible_lambdas":
+            return self._filter_visible_transitions(row)
+        elif filter_type == 'one_visible_lambda':
+            return self._filter_at_least_one_visible_transition(row)
+        elif filter_type == 'all_samples':
+            return self._select_all_transitions(row)
+        else: 
+            raise ValueError()
+
+    def _build_top_pairs(self, transitions: List[Tuple[float, float]], num_pairs: int = 10, min_f_value: float = 0) -> torch.Tensor:
 
         vec = []
-        for lam, f in selected:
-            vec.extend([lam, f])
-
-        while len(vec) < num_pairs * 2:
-            vec.extend([0.0, 0.0])
-
+        for lam, f in transitions:
+            if len(vec) < num_pairs * 2:
+                vec.extend([lam, f])
         return torch.tensor([vec], dtype=torch.float32)
 
     def _build_absorption_vector(
         self,
         transitions: List[Tuple[float, float]],
-        wavelength_range: Tuple[float, float]
+        wavelength_range: Tuple[float, float],
+        lorenzian: bool = False,
     ) -> torch.Tensor:
-        """Histogram-style discrete spectrum."""
-        num_bins = int(wavelength_range[1] - wavelength_range[0])
+        """Build discrete absorption spectrum as histogram or Lorentzian-broadened vector."""
         start, end = wavelength_range
+        num_bins = int(end - start)
+        lam_grid = np.linspace(start, end, num_bins)
         hist = np.zeros(num_bins)
 
-        for lam, f in transitions:
-            if start <= lam <= end:
-                idx = int((lam - start) / (end - start) * num_bins)
-                idx = min(max(idx, 0), num_bins - 1)
-                hist[idx] += f
+        if not lorenzian:
+            for lam, f in transitions:
+                if start <= lam <= end:
+                    idx = int((lam - start) / (end - start) * num_bins)
+                    idx = min(max(idx, 0), num_bins - 1)
+                    hist[idx] += f
+        else:
+            gamma = 2.0 
+            for lam0, f in transitions:
+                hist += f * (1/np.pi) * (gamma / ((lam_grid - lam0)**2 + gamma**2))
+
         return torch.tensor(hist, dtype=torch.float32).unsqueeze(0)
+
+
+    def _build_lambda_binary(self, transitions: List[Tuple[float, float]], num_pairs: int = 10, min_f_value: float = 0) -> torch.Tensor:
+        if not transitions:
+            return torch.zeros(1, num_pairs, dtype=torch.float32)
+
+        vec = []
+        for lam, f in transitions:
+            if len(vec) < num_pairs:
+                vec.extend([lam])
+
+        return torch.tensor([vec], dtype=torch.float32)
+
+    def _prepare_the_output_format(self, transitions):
+        if not self.prediction_type in {"pairs", "vector", "lambda_binary"}:
+            raise ValueError('prediction type did not mach: ', " pairs ", " vector ", " lambda_binary")
+        if self.prediction_type == "pairs":
+            num_pairs = self.num_states
+            min_f_value = self.min_f_value
+            return self._build_top_pairs(transitions, num_pairs=num_pairs,min_f_value=min_f_value)
+
+        elif self.prediction_type == 'vector':
+            vector_range = self.prediction_params["range"]
+            return self._build_absorption_vector(transitions, vector_range, self.lorenzian)
+        elif self.prediction_type == 'lambda_binary':
+            return self._build_lambda_binary(transitions, num_pairs=self.num_states, min_f_value=self.min_f_value)
+
 
     def process(self):
         base_csv_path = os.path.join(self.root, self._csv_filename())
@@ -206,64 +346,37 @@ class TMQMGStarDataset(InMemoryDataset):
         data_list: List[Data] = []
 
         for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing"):
-            try:
-                num_atoms = int(row["num_atoms"]) if "num_atoms" in row and not pd.isna(row["num_atoms"]) else None
-                pos = _parse_coords(row["atom_coords"], expected_n=num_atoms)
-                z = _parse_atom_types(row["atom_types"])
-
-                if pos.size(0) != z.numel():
-                    raise ValueError(f"Atom count mismatch: pos={pos.size(0)}, z={z.numel()}")
-
-                smiles = "" if pd.isna(row["SMILES"]) else str(row["SMILES"])
-                origin_id = None if pd.isna(row["origin_ID"]) else str(row["origin_ID"])
-                csd_code = None if pd.isna(row["CSD_code"]) else str(row["CSD_code"])
-
-                kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
-
-                if self.prediction_type in {"pairs", "vector"}:
-                    transitions = self._filter_visible_transitions(row)
-                    if not transitions:
-                        continue
-                    if self.prediction_type == "pairs":
-                        try:
-                            num_pairs = self.num_states
-                            y = self._build_top_pairs(transitions, num_pairs=num_pairs)
-                        except KeyError:
-                            print("Num pairs not defined")
-                    else:
-                        try:
-                            vector_range = self.prediction_params["range"]
-                            y = self._build_absorption_vector(transitions, vector_range)
-                        except KeyError:
-                            print("Range not defined")
-
-                else:
-                    y = None
-
-                if y is not None:
-                    kwargs["y"] = y
-
-                for col in self.extra_fields:
-                    if col not in df.columns:
-                        raise KeyError(f"Requested extra field '{col}' not found in merged dataset.")
-                    val = row[col]
-                    parsed = None
-                    if isinstance(val, str) and val.strip().startswith("[") and val.strip().endswith("]"):
-                        maybe = _to_list(val)
-                        if all(_is_number(x) for x in maybe):
-                            parsed = torch.tensor([float(x) for x in maybe], dtype=torch.float32)
-                        else:
-                            parsed = maybe
-                    kwargs[col] = parsed if parsed is not None else val
-
-                data = Data(**kwargs)
-                if self.pre_transform:
-                    data = self.pre_transform(data)
-                data_list.append(data)
-
-            except Exception as e:
-                print(f"Skipping row {i}: {e}")
+            num_atoms = int(row["num_atoms"]) if "num_atoms" in row and not pd.isna(row["num_atoms"]) else None
+            pos = _parse_coords(row["atom_coords"], expected_n=num_atoms)
+            z = _parse_atom_types(row["atom_types"])
+            if pos.size(0) != z.numel():
+                raise ValueError(f"Atom count mismatch: pos={pos.size(0)}, z={z.numel()}")
+            smiles = "" if pd.isna(row["SMILES"]) else str(row["SMILES"])
+            origin_id = None if pd.isna(row["origin_ID"]) else str(row["origin_ID"])
+            csd_code = None if pd.isna(row["CSD_code"]) else str(row["CSD_code"])
+            kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
+            transitions = self.filter_data_with_criterion(row,self.filter_type)
+            if not transitions:
                 continue
+            y = self._prepare_the_output_format(transitions)
+            if y is not None:
+                kwargs["y"] = y
+            for col in self.extra_fields:
+                if col not in df.columns:
+                    raise KeyError(f"Requested extra field '{col}' not found in merged dataset.")
+                val = row[col]
+                parsed = None
+                if isinstance(val, str) and val.strip().startswith("[") and val.strip().endswith("]"):
+                    maybe = _to_list(val)
+                    if all(_is_number(x) for x in maybe):
+                        parsed = torch.tensor([float(x) for x in maybe], dtype=torch.float32)
+                    else:
+                        parsed = maybe
+                kwargs[col] = parsed if parsed is not None else val
+            data = Data(**kwargs)
+            if self.pre_transform:
+                data = self.pre_transform(data)
+            data_list.append(data)
 
         if not data_list:
             raise RuntimeError("No valid molecules processed.")
