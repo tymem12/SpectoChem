@@ -79,7 +79,9 @@ class SupervisedGraphLevelGNN(LightningModule):
         return loss
 
     def validation_step(self, batch: Data, batch_idx: int) -> None:
-        self._shared_step(batch, split="val")
+        loss = self._shared_step(batch, split="val")
+        self.log("val_loss", loss, batch_size=batch.batch_size, prog_bar=False)
+
 
     def test_step(self, batch: Data, batch_idx: int) -> Tensor:
         loss = self._shared_step(batch, split="test")
@@ -91,6 +93,7 @@ class SupervisedGraphLevelGNN(LightningModule):
                 "y_pred": logits.detach().cpu(),
             }
         )
+        self.log("test_loss", loss, batch_size=batch.batch_size, prog_bar=False)
 
         return loss
 
@@ -104,25 +107,19 @@ class SupervisedGraphLevelGNN(LightningModule):
         y_gt = batch.y
         loss = self.predictor.loss_func(input=logits, target=y_gt)
 
+        probas = self.predictor.logits_to_proba(logits)
         metrics = self.metrics[f"{split}_metrics"]
-        metrics(preds=logits, target=y_gt)
+        metrics.update(preds=probas, target=y_gt)
 
-        # --- Log metrics (support non-reduced outputs) ---
-        computed_metrics = metrics.compute()
-        log_dict = {}
-
-        for name, value in computed_metrics.items():
-            # If the metric returns a tensor with >0 dims (e.g., per-target metrics)
-            if torch.is_tensor(value) and value.ndim > 0:
-                for i, v in enumerate(value):
-                    log_dict[f"{name}_{i}"] = v
-            else:
-                log_dict[name] = value
-
-        # Log to TensorBoard
-        self.log_dict(log_dict, batch_size=len(y_gt))
+        self.log_dict(
+            metrics,
+            on_step=(split == "train"),  
+            on_epoch=True,               
+            batch_size=len(y_gt),
+        )
 
         return loss
+
 
     def on_test_end(self) -> None:
 
@@ -187,27 +184,3 @@ class SupervisedGraphLevelGNN(LightningModule):
 
         scheduler = LinearWarmupCosineAnnealingLR(optim, **self.config.training.scheduler_config)
         return {"optimizer": optim, "lr_scheduler": scheduler}
-
-
-    def setup(self, stage: str):
-        dm = getattr(self.trainer, "datamodule", None)
-        y_std = getattr(dm, "y_std", None) if dm is not None else None
-        if y_std is None:
-            return
-        import torch
-        y_std_t = torch.as_tensor(y_std, dtype=torch.float32)
-
-        ds_config = self.config.dataset
-
-        from gjepa.metrics.regression import get_default_regression_metrics
-        self.predictor.metrics = get_default_regression_metrics(
-            task_type=ds_config.task_type,
-            output_dim=ds_config.out_channels,
-            y_std=y_std_t,
-            prediction_type=self._get_prediction_type(),
-            reduce_mean=ds_config.task_type == "multiregression"
-        )
-        self.metrics = nn.ModuleDict({
-            f"{split}_metrics": self.predictor.metrics.clone(prefix=f"{split}_")
-            for split in ("train", "val", "test")
-        })

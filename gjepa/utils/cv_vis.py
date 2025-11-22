@@ -280,8 +280,8 @@ def _plot_lambda_binary_predictions(
             p_x = row[prediction_cols[pair_idx]]
 
             if standarized_lambda_val['standarize']:
-            t_x = (t_x * standarized_lambda_val['std_lambda']) + standarized_lambda_val['mean_lambda']
-            p_x = (p_x * standarized_lambda_val['std_lambda']) + standarized_lambda_val['mean_lambda']
+                t_x = (t_x * standarized_lambda_val['std_lambda']) + standarized_lambda_val['mean_lambda']
+                p_x = (p_x * standarized_lambda_val['std_lambda']) + standarized_lambda_val['mean_lambda']
 
             x_targets.append(t_x)
             y_targets.append(1)
