@@ -8,9 +8,11 @@ from typing import List, Optional, Sequence, Union, Any, Dict, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
 
 import torch
 from torch import Tensor
+from gjepa.datasets.cv_vis.standarizer_singleton import StandarizerSingletonF, StandarizerSingletonLambda
 
 _SYMBOL2Z = {
     "H":1,"He":2,"Li":3,"Be":4,"B":5,"C":6,"N":7,"O":8,"F":9,"Ne":10,"Na":11,"Mg":12,"Al":13,
@@ -155,6 +157,9 @@ def _plot_pairs_graph_with_predictions(
 
     if num_targets % 2 != 0:
         raise ValueError()
+    
+    standarized_lambda_val = StandarizerSingletonLambda.get_values()
+    standarized_f_val = StandarizerSingletonF.get_values()
 
     num_pairs = num_targets // 2
     num_samples = min(len(data), num_samples)
@@ -174,6 +179,14 @@ def _plot_pairs_graph_with_predictions(
             t_y = row[target_cols[odd_idx]]
             p_x = row[prediction_cols[even_idx]]
             p_y = row[prediction_cols[odd_idx]]
+            if standarized_f_val['standarize']:
+                t_y = (t_y * standarized_f_val['std_f']) + standarized_f_val['mean_f']
+                p_y = (p_y * standarized_f_val['std_f']) + standarized_f_val['mean_f']
+            
+            if standarized_lambda_val['standarize']:
+                t_x = (t_x * standarized_lambda_val['std_lambda']) + standarized_lambda_val['mean_lambda']
+                p_x = (p_x * standarized_lambda_val['std_lambda']) + standarized_lambda_val['mean_lambda']
+
 
             x_targets.append(t_x)
             y_targets.append(t_y)
@@ -247,6 +260,7 @@ def _plot_lambda_binary_predictions(
 
     num_targets = len(target_cols)
     num_preds = len(prediction_cols)
+    standarized_lambda_val = StandarizerSingletonLambda.get_values()
 
     if num_preds != num_targets:
         raise ValueError()
@@ -264,6 +278,10 @@ def _plot_lambda_binary_predictions(
 
             t_x = row[target_cols[pair_idx]]
             p_x = row[prediction_cols[pair_idx]]
+
+            if standarized_lambda_val['standarize']:
+            t_x = (t_x * standarized_lambda_val['std_lambda']) + standarized_lambda_val['mean_lambda']
+            p_x = (p_x * standarized_lambda_val['std_lambda']) + standarized_lambda_val['mean_lambda']
 
             x_targets.append(t_x)
             y_targets.append(1)
@@ -421,12 +439,39 @@ def _plot_vector_graph_with_predictions(
         print("saves to:", filepath)
 
 
+def _plot_binary_classification(data: pd.DataFrame, save_path: str) -> None:
+    out_dir = os.path.join(save_path, "saved_plots")
+    os.makedirs(out_dir, exist_ok=True)
 
-def plot_graph_with_predictions(data: pd.DataFrame, output_type: str, save_path: str, range: tuple, standarize_lambdas:bool = False):
-            # HARD CODED- REMOVE LATER IT WAS JUST FOR TEST:
-    mean_lambda: float = 280.097
-    std_lambda: float = 320.900
-    destandarize = lambda x : (x * std_lambda) + mean_lambda if standarize_lambdas else None
+    if 'target_0' in data.columns:
+        targets = data['target_0']
+    else:
+        targets = data['taget_0'] 
+    
+    predictions = data['prediction_0']
+
+    probs = 1.0 / (1.0 + np.exp(-predictions.values))  # sigmoid
+    y_pred = (probs >= 0.5).astype(int)
+    y_true = targets.values.astype(int)
+
+    cm = confusion_matrix(y_true, y_pred)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+    fig, ax = plt.subplots()
+    disp.plot(ax=ax)
+
+    fig_path = os.path.join(out_dir, "confusion_matrix.png")
+    fig.savefig(fig_path, bbox_inches="tight")
+    plt.close(fig)
+
+    report = classification_report(y_true, y_pred, digits=4)
+    report_path = os.path.join(out_dir, "classification_report.txt")
+    with open(report_path, "w") as f:
+        f.write(report)
+
+
+
+
+def plot_graph_with_predictions(data: pd.DataFrame, output_type: str, save_path: str, range: tuple):
     if output_type == 'vector':
         _plot_vector_graph_with_predictions(data, save_path, range)
 
@@ -435,5 +480,6 @@ def plot_graph_with_predictions(data: pd.DataFrame, output_type: str, save_path:
 
     elif output_type == 'lambda_binary':
         _plot_lambda_binary_predictions(data, save_path, range)
-
+    elif output_type == 'binary_classification':
+        _plot_binary_classification(data, save_path)
 

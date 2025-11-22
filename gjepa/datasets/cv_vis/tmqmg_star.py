@@ -24,7 +24,8 @@ class TMQMGStarDataset(InMemoryDataset):
         prediction_params: Optional[dict] = None,
         vis_range: Tuple[float, float] = (380.0, 750.0),
         num_states: int = 10,
-        min_f_value: float = 0.0002,
+        filter_f_value: float = 0.001,
+        min_f_value: float = 0.001,
         lorenzian: bool = False,
         sort_by_max_f: bool = True,
         standarize_lambda: bool = False,
@@ -42,12 +43,13 @@ class TMQMGStarDataset(InMemoryDataset):
         self.min_lambda, self.max_lambda = vis_range
         self.num_states = num_states
         self.min_f_value = min_f_value
+        self.filter_f_value = filter_f_value
         self.lorenzian = lorenzian
         self.sort_by_max_f = sort_by_max_f
         self.standarize_lambda = standarize_lambda
         self.standarize_f = standarize_f
 
-        if self.prediction_type not in {"pairs", "vector", 'lambda_binary'}:
+        if self.prediction_type not in {"pairs", "vector", 'lambda_binary', 'binary_classification'}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
         super().__init__(root=root, transform=transform, pre_transform=pre_transform)
@@ -100,6 +102,7 @@ class TMQMGStarDataset(InMemoryDataset):
             f"vis_range-{self.min_lambda}-{self.max_lambda}_"
             f"filter_type-{self.filter_type}_min_f_val{self.min_f_value}_"
             f"sort_by_max_f-{self.sort_by_max_f}_"
+            f"filter_f_value-{self.filter_f_value}_"
             f"standarize_lambda-{self.standarize_lambda}_"
             f"standarize_f-{self.standarize_f}_"
             f"pre{pre_transform}.pt"
@@ -165,7 +168,7 @@ class TMQMGStarDataset(InMemoryDataset):
             lam = float(lam)
             f = float(f)
 
-            if f < self.min_f_value:
+            if f < self.filter_f_value:
                 continue
 
             candidates.append((lam, f, i))
@@ -199,10 +202,10 @@ class TMQMGStarDataset(InMemoryDataset):
             lam = float(lam)
             f = float(f)
 
-            if f >= self.min_f_value:
+            if f > self.filter_f_value:
                 candidates.append((lam, f, i))
 
-                if self.min_lambda <= lam <= self.max_lambda:
+                if self.min_lambda <= lam <= self.max_lambda and f > self.min_f_value :
                     has_visible = True
                     visible_lambda = lam
                     visible_f = f
@@ -277,19 +280,27 @@ class TMQMGStarDataset(InMemoryDataset):
 
 
     def _build_lambda_binary(self, transitions: List[Tuple[float, float]], num_pairs: int = 10, min_f_value: float = 0) -> torch.Tensor:
-        if not transitions:
-            return torch.zeros(1, num_pairs, dtype=torch.float32)
-
         vec = []
         for lam, f in transitions:
             if len(vec) < num_pairs:
                 vec.extend([lam])
 
         return torch.tensor([vec], dtype=torch.float32)
+    
+    def _build_binary(self, transitions: List[Tuple[float, float]], min_f_value: float = 0) -> torch.Tensor:
+        pos = 0
+        for lam, f in transitions:
+            if self.min_lambda <= lam <= self.max_lambda and f > min_f_value:
+                pos = 1
+                break
+        
+        if pos not in [0,1]:
+            raise ValueError()
+        return torch.tensor([[pos]], dtype=torch.float32)
 
     def _prepare_the_output_format(self, transitions):
-        if not self.prediction_type in {"pairs", "vector", "lambda_binary"}:
-            raise ValueError('prediction type did not mach: ', " pairs ", " vector ", " lambda_binary")
+        if not self.prediction_type in {"pairs", "vector", "lambda_binary", "binary_classification"}:
+            raise ValueError('prediction type did not mach: ', " pairs ", " vector ", " lambda_binary", " binary_classification")
         if self.prediction_type == "pairs":
             num_pairs = self.num_states
             min_f_value = self.min_f_value
@@ -300,6 +311,9 @@ class TMQMGStarDataset(InMemoryDataset):
             return self._build_absorption_vector(transitions, vector_range, self.lorenzian)
         elif self.prediction_type == 'lambda_binary':
             return self._build_lambda_binary(transitions, num_pairs=self.num_states, min_f_value=self.min_f_value)
+        elif self.prediction_type == 'binary_classification':
+            y = self._build_binary(transitions, min_f_value=self.min_f_value)
+            return y
 
 
     def process(self):

@@ -279,6 +279,10 @@ class GraphLevelDataModule(GraphDataModule):
             self.val_ds = _standardize_dataset(self.val_ds)
             self.test_ds = _standardize_dataset(self.test_ds)
             return
+        if type == "binary_classification":
+            print('SHAPE: ', self.train_ds[0].y.shape)
+            return
+        
         raise ValueError(f"Unknown standarization type: {type!r}. Expected 'pairs', 'vector', or 'lambda_binary'.")
 
 

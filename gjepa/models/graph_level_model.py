@@ -70,9 +70,7 @@ class SupervisedGraphLevelGNN(LightningModule):
 
     def forward(self, batch: Data) -> Tensor:
         z = self._get_pooled_z(batch)
-
         logits = self.predictor(z)
-
         return logits
 
     def training_step(self, batch: Data, batch_idx: int) -> Tensor:
@@ -85,7 +83,6 @@ class SupervisedGraphLevelGNN(LightningModule):
 
     def test_step(self, batch: Data, batch_idx: int) -> Tensor:
         loss = self._shared_step(batch, split="test")
-
         logits = self.forward(batch)
         self._test_outputs.append(
             {
@@ -107,7 +104,6 @@ class SupervisedGraphLevelGNN(LightningModule):
         y_gt = batch.y
         loss = self.predictor.loss_func(input=logits, target=y_gt)
 
-        # Update metric collection
         metrics = self.metrics[f"{split}_metrics"]
         metrics(preds=logits, target=y_gt)
 
@@ -136,12 +132,10 @@ class SupervisedGraphLevelGNN(LightningModule):
         all_ids: list[str] = []
         for o in self._test_outputs:
             all_ids.extend(list(o["origin_id"]))
-
         y_all = torch.cat([o["y"] for o in self._test_outputs], dim=0)
         y_pred_all = torch.cat([o["y_pred"] for o in self._test_outputs], dim=0)
-
         N, D = y_all.shape
-        assert len(all_ids) == N
+        assert len(all_ids) == N, f'N: {N}, len(all_ids): {len(all_ids)}'
 
         data = {"origin_id": np.array(all_ids)}
         y_np = y_all.numpy()
