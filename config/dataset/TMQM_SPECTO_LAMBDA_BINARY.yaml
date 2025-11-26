@@ -13,7 +13,7 @@ main_metric: MAE
 additional_loading_params: 
   prediction_type: lambda_binary
   num_states: 2
-  vis_range: [380, 680]
+  vis_range: [380, 650]
   block_3_only: True
   filter_type: one_visible_lambda #all_samples
   filter_f_value: 0.001

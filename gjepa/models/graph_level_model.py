@@ -60,6 +60,7 @@ class SupervisedGraphLevelGNN(LightningModule):
             }
         )
         self._test_outputs: list[dict] = []
+        self._val_outputs: list[dict] = []   # <--- added
 
     def _get_prediction_type(
         self
@@ -106,7 +107,7 @@ class SupervisedGraphLevelGNN(LightningModule):
         logits = self.forward(batch)
         y_gt = batch.y
         loss = self.predictor.loss_func(input=logits, target=y_gt)
-
+    
         probas = self.predictor.logits_to_proba(logits)
         metrics = self.metrics[f"{split}_metrics"]
         metrics.update(preds=probas, target=y_gt)
