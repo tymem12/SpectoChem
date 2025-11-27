@@ -74,7 +74,9 @@ def get_default_regression_metrics(
                 "SMSE": SpectralMetric(smse),
                 "Wasserstein": SpectralMetric(wasserstein),
             }
-            metrics.add_metrics(spectral_metrics)
+            # TODO: restore spectral metrics (currently they cause issues with
+            # gradients not being able to flow when using inplace operations)
+            #metrics.add_metrics(spectral_metrics)
     else:
         raise ValueError(f"Invalid `task_type` for regression: {task_type!r}")
 

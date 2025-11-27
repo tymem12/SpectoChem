@@ -1,0 +1,2 @@
+gnn_cls: gjepa.models.backbones.UMAEncoder
+predictor_name: uma-s-1p1

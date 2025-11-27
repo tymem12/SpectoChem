@@ -110,3 +110,29 @@ additional_loading_params:
 * **standarize_f: false**
   Standardyzacja wartości oscylacji (analogicznie — zależna od outputu).
 
+# UMA
+
+## Accessing the model
+
+### Requesting the access
+1. Go to https://huggingface.co/facebook/UMA, fill out the model access form and send the request
+
+1. Go to https://huggingface.co/settings/gated-repos and wait for the request status to change from PENDING to ACCEPTED
+
+### Accessing the model in scripts
+1. In order to run inference using the model, you need to authenticate your huggingface account that has access to the UMA repo, in one of two ways:
+
+- one time authentication using `huggingface-cli` in the terminal:
+```base
+huggingface-cli login
+```
+
+- specifying a huggingface access token (created at https://huggingface.co/settings/tokens) every time as an environment variable when running an UMA script - either in the command line:
+```bash
+HF_TOKEN=... python script.py
+```
+or in the Python script itself:
+```python
+import os
+os.environ["HF_TOKEN"] = "..."
+```
