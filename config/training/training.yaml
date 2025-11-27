@@ -8,9 +8,12 @@ random_seed: 2137
 learning_rate: 1e-3
 weight_decay: 5e-4
 batch_size: 32
-min_epochs: 2
-max_epochs: 3
-early_stopping: null
+min_epochs: 3
+max_epochs: 40
+early_stopping: 
+  monitor: val_${dataset.main_metric}
+  mode: ${dataset.metric_mode}
+  patience: 6
 checkpoint:
   monitor: val_${dataset.main_metric}
   mode: ${dataset.metric_mode}

@@ -24,7 +24,8 @@ class TMQMGStarDataset(InMemoryDataset):
         prediction_params: Optional[dict] = None,
         vis_range: Tuple[float, float] = (380.0, 750.0),
         num_states: int = 10,
-        min_f_value: float = 0.0002,
+        filter_f_value: float = 0.001,
+        min_f_value: float = 0.001,
         lorenzian: bool = False,
         sort_by_max_f: bool = True,
         standarize_lambda: bool = False,
@@ -42,12 +43,13 @@ class TMQMGStarDataset(InMemoryDataset):
         self.min_lambda, self.max_lambda = vis_range
         self.num_states = num_states
         self.min_f_value = min_f_value
+        self.filter_f_value = filter_f_value
         self.lorenzian = lorenzian
         self.sort_by_max_f = sort_by_max_f
         self.standarize_lambda = standarize_lambda
         self.standarize_f = standarize_f
 
-        if self.prediction_type not in {"pairs", "vector", 'lambda_binary'}:
+        if self.prediction_type not in {"pairs", "vector", 'lambda_binary', 'binary_classification'}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
         super().__init__(root=root, transform=transform, pre_transform=pre_transform)
@@ -100,6 +102,7 @@ class TMQMGStarDataset(InMemoryDataset):
             f"vis_range-{self.min_lambda}-{self.max_lambda}_"
             f"filter_type-{self.filter_type}_min_f_val{self.min_f_value}_"
             f"sort_by_max_f-{self.sort_by_max_f}_"
+            f"filter_f_value-{self.filter_f_value}_"
             f"standarize_lambda-{self.standarize_lambda}_"
             f"standarize_f-{self.standarize_f}_"
             f"pre{pre_transform}.pt"
@@ -115,42 +118,6 @@ class TMQMGStarDataset(InMemoryDataset):
         pass
 
 
-    def _filter_visible_transitions(self, row: pd.Series) -> List[Tuple[float, float]]:
-
-        candidates: List[Tuple[float, float, int]] = []  # (lambda, f, i)
-
-        for i in range(1,31):
-            lam_col = f"lambda_{i}_gasphase"
-            f_col = f"f_{i}_gasphase"
-
-            lam = row[lam_col]
-            f = row[f_col]
-            lam = float(lam)
-            f = float(f)
-
-            if not (self.min_lambda <= lam <= self.max_lambda):
-                continue
-
-            if not (f >= self.min_f_value):
-                continue
-
-            candidates.append((lam, f, i))
-
-        if len(candidates) < self.num_states:
-            return []
-
-        if self.sort_by_max_f:
-            candidates_sorted = sorted(candidates, key=lambda x: (-x[1], x[2]))
-            chosen = candidates_sorted[: self.num_states]
-        else:
-            candidates_sorted = sorted(candidates, key=lambda x: x[2])
-            chosen = candidates_sorted[: self.num_states]
-
-        result = [(lam, f) for (lam, f, _) in chosen]
-        return result
-
-    
-
 
     def _select_all_transitions(self, row: pd.Series) -> List[Tuple[float, float]]:
 
@@ -165,20 +132,20 @@ class TMQMGStarDataset(InMemoryDataset):
             lam = float(lam)
             f = float(f)
 
-            if f < self.min_f_value:
+            if f <= self.filter_f_value:
                 continue
 
             candidates.append((lam, f, i))
 
-        if not candidates:
+        if not candidates or len(candidates) < self.num_states:
             return []
 
         if self.sort_by_max_f:
             candidates_sorted = sorted(candidates, key=lambda x: (-x[1], x[2]))
-            chosen = candidates_sorted[: self.num_states]
+            chosen = candidates_sorted
         else:
             candidates_sorted = sorted(candidates, key=lambda x: x[2])
-            chosen = candidates_sorted[: self.num_states]
+            chosen = candidates_sorted
 
         result = [(lam, f) for (lam, f, _) in chosen]
         return result
@@ -199,10 +166,10 @@ class TMQMGStarDataset(InMemoryDataset):
             lam = float(lam)
             f = float(f)
 
-            if f >= self.min_f_value:
+            if f > self.filter_f_value:
                 candidates.append((lam, f, i))
 
-                if self.min_lambda <= lam <= self.max_lambda:
+                if self.min_lambda <= lam <= self.max_lambda and f > self.min_f_value :
                     has_visible = True
                     visible_lambda = lam
                     visible_f = f
@@ -210,39 +177,32 @@ class TMQMGStarDataset(InMemoryDataset):
         if not has_visible:
             return []
 
-        if not candidates:
+        if not candidates or len(candidates) < self.num_states:
             return []
 
         if self.sort_by_max_f:
             candidates_sorted = sorted(candidates, key=lambda x: (-x[1], x[2]))
-            chosen = candidates_sorted[: self.num_states]
+            chosen = candidates_sorted
         else:
             candidates_sorted = sorted(candidates, key=lambda x: x[2])
-            chosen = candidates_sorted[: self.num_states]
+            chosen = candidates_sorted
 
-        result = [(lam, f) for (lam, f, _) in chosen]
-        lambdas_selected = [lam for (lam, _) in result]
-        if visible_lambda in lambdas_selected:
-            return result
-        else:
-            del result[-1]
-            result.append((visible_lambda, visible_f))
+        result = [(lam, f) for (lam, f, _) in chosen if lam != visible_lambda]
+        result.insert(0, (visible_lambda, visible_f))
         return result
 
 
 
     
     def filter_data_with_criterion(self, row: pd.Series, filter_type: str):
-        if filter_type == "all_visible_lambdas":
-            return self._filter_visible_transitions(row)
-        elif filter_type == 'one_visible_lambda':
+        if filter_type == 'one_visible_lambda':
             return self._filter_at_least_one_visible_transition(row)
         elif filter_type == 'all_samples':
             return self._select_all_transitions(row)
         else: 
             raise ValueError()
 
-    def _build_top_pairs(self, transitions: List[Tuple[float, float]], num_pairs: int = 10, min_f_value: float = 0) -> torch.Tensor:
+    def _build_top_pairs(self, transitions: List[Tuple[float, float]], num_pairs: int = 10) -> torch.Tensor:
 
         vec = []
         for lam, f in transitions:
@@ -276,30 +236,41 @@ class TMQMGStarDataset(InMemoryDataset):
         return torch.tensor(hist, dtype=torch.float32).unsqueeze(0)
 
 
-    def _build_lambda_binary(self, transitions: List[Tuple[float, float]], num_pairs: int = 10, min_f_value: float = 0) -> torch.Tensor:
-        if not transitions:
-            return torch.zeros(1, num_pairs, dtype=torch.float32)
-
+    def _build_lambda_binary(self, transitions: List[Tuple[float, float]], num_pairs: int = 10) -> torch.Tensor:
         vec = []
         for lam, f in transitions:
             if len(vec) < num_pairs:
                 vec.extend([lam])
 
         return torch.tensor([vec], dtype=torch.float32)
+    
+    def _build_binary(self, transitions: List[Tuple[float, float]], min_f_value: float = 0) -> torch.Tensor:
+        pos = 0
+        for lam, f in transitions:
+            if self.min_lambda <= lam <= self.max_lambda and f > min_f_value:
+                pos = 1
+                break
+        
+        if pos not in [0,1]:
+            raise ValueError()
+        return torch.tensor([[pos]], dtype=torch.float32)
 
     def _prepare_the_output_format(self, transitions):
-        if not self.prediction_type in {"pairs", "vector", "lambda_binary"}:
-            raise ValueError('prediction type did not mach: ', " pairs ", " vector ", " lambda_binary")
+        if not self.prediction_type in {"pairs", "vector", "lambda_binary", "binary_classification"}:
+            raise ValueError('prediction type did not mach: ', " pairs ", " vector ", " lambda_binary", " binary_classification")
         if self.prediction_type == "pairs":
             num_pairs = self.num_states
             min_f_value = self.min_f_value
-            return self._build_top_pairs(transitions, num_pairs=num_pairs,min_f_value=min_f_value)
+            return self._build_top_pairs(transitions, num_pairs=num_pairs)
 
         elif self.prediction_type == 'vector':
             vector_range = self.prediction_params["range"]
             return self._build_absorption_vector(transitions, vector_range, self.lorenzian)
         elif self.prediction_type == 'lambda_binary':
-            return self._build_lambda_binary(transitions, num_pairs=self.num_states, min_f_value=self.min_f_value)
+            return self._build_lambda_binary(transitions, num_pairs=self.num_states)
+        elif self.prediction_type == 'binary_classification':
+            y = self._build_binary(transitions, min_f_value=self.min_f_value)
+            return y
 
 
     def process(self):
@@ -344,6 +315,8 @@ class TMQMGStarDataset(InMemoryDataset):
             )
 
         data_list: List[Data] = []
+        pos_classes_counter = 0
+        neg_classes_counter = 0
 
         for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing"):
             num_atoms = int(row["num_atoms"]) if "num_atoms" in row and not pd.isna(row["num_atoms"]) else None
@@ -359,6 +332,11 @@ class TMQMGStarDataset(InMemoryDataset):
             if not transitions:
                 continue
             y = self._prepare_the_output_format(transitions)
+            if y is not None and self.prediction_type == 'binary_classification':
+                if y.item() == 1:
+                    pos_classes_counter += 1
+                elif y.item() == 0:
+                    neg_classes_counter += 1
             if y is not None:
                 kwargs["y"] = y
             for col in self.extra_fields:
@@ -378,6 +356,7 @@ class TMQMGStarDataset(InMemoryDataset):
                 data = self.pre_transform(data)
             data_list.append(data)
 
+        print(f"Positive classes: {pos_classes_counter}, Negative classes: {neg_classes_counter}")
         if not data_list:
             raise RuntimeError("No valid molecules processed.")
 

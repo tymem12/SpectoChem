@@ -12,15 +12,14 @@ metric_mode: min
 main_metric: MAE
 additional_loading_params: 
   prediction_type: vector
-  vis_range: [380, 750]
+  vis_range: [370, 680]
   num_states: 4
-  filter_type: all_visible_lambdas    #all_samples   all_visible_lambdas
-  prediction_params:
-    range: [380, 750]
+  filter_type: one_visible_lambdas    #all_samples 
   block_3_only: True
   lorenzian: false
   sort_by_max_f: false
   min_f_value: -1
+  filter_f_value: 0.001
   standarize_f: false
   standarize_lambda: false
 

@@ -21,7 +21,7 @@ class ClassifierBase(PredictorBase, ABC):
         return self.logits_to_proba(self(x))
 
     def logits_to_proba(self, x: Tensor) -> Tensor:
-        if self.output_dim == 1:
+        if self.out_channels == 1:
             assert x.shape[1] == 1
             return x.sigmoid()
         else:
