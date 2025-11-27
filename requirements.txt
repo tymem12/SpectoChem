@@ -27,3 +27,8 @@ pre-commit==4.2.0
 # openqdc==0.1.2
 rdkit==2025.3.4
 # nerfstudio==1.1.5
+
+# UMA (Universal Models for Atoms) package
+fairchem-core==2.11.0
+ase==3.26.0
+pymatgen==2025.10.7

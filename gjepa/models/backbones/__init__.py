@@ -3,6 +3,8 @@ from .gnn_pos import PosEncoder, PositionalCustomGNN
 from .gps import GraphGPS
 from .schnet import SchNetEncoder
 from .dimenet import DimeNetEncoder
+from .uma import UMAEncoder
+
 __all__ = [
     "CustomGNN",
     "CustomGCN",
@@ -11,5 +13,6 @@ __all__ = [
     "PositionalCustomGNN",
     "GraphGPS",
     "SchNetEncoder",
-    "DimeNetEncoder"
+    "DimeNetEncoder",
+    "UMAEncoder"
 ]
