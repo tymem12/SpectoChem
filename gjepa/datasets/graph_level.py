@@ -94,13 +94,11 @@ class GraphLevelDataModule(GraphDataModule):
 
         )
 
-
-
         if self.pos_enc_path is not None:
             attach_pe_to_dataset_inplace(dataset=dataset, pe_path=self.pos_enc_path)
         if should_split:
             self.train_ds, self.val_ds, self.test_ds = split_dataset(
-                dataset, split_ratios, seed=69
+                dataset, split_ratios
             )
         else:
             self.train_ds = Subset(dataset, dataset.split_indices["train"])

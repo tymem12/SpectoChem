@@ -443,11 +443,7 @@ def _plot_binary_classification(data: pd.DataFrame, save_path: str) -> None:
     out_dir = os.path.join(save_path, "saved_plots")
     os.makedirs(out_dir, exist_ok=True)
 
-    if 'target_0' in data.columns:
-        targets = data['target_0']
-    else:
-        targets = data['taget_0'] 
-    
+    targets = data['target_0']
     predictions = data['prediction_0']
 
     probs = 1.0 / (1.0 + np.exp(-predictions.values))  # sigmoid
