@@ -14,6 +14,8 @@ from torch_geometric.utils import (
     to_scipy_sparse_matrix,
 )
 from gjepa.utils.graph_level import calc_edge_index, calc_edge_weight
+from dscribe.descriptors import SOAP
+from ase import Atoms
 
 
 
@@ -484,4 +486,93 @@ class AddLaplacianPE(AddLaplacianEigenvectorPE):
         pe = pe * sign
         setattr(data, self.attr_name, pe)
 
+        return data
+    
+
+class SOAP_Dsribe(BaseTransform):
+    def __init__(self, species, rcut=5.0, nmax=8, lmax=6, sigma=0.5, sparse: str=True, attr_name: str = "positional_encoding"):
+        self.soap = SOAP(
+            species=species,
+            r_cut=rcut,
+            n_max=nmax,
+            l_max=lmax,
+            sigma=sigma,
+            sparse=True,
+            periodic=False
+        )
+        self.attr_name = attr_name
+        self.species = set(species)
+
+    @torch.no_grad()
+    def __call__(self, data):
+        pos = data.pos.cpu().numpy()
+        Z = data.z.cpu().numpy()
+
+        mask = [i for i, z in enumerate(Z) if z in self.species]
+        if len(mask) == 0:
+            soap_tensor = torch.zeros((0, self.soap.get_number_of_features()), dtype=torch.float32)
+            setattr(data, self.attr_name, soap_tensor)
+            return data
+
+        pos_filtered = pos[mask]
+        Z_filtered = Z[mask]
+
+        atoms = Atoms(numbers=Z_filtered, positions=pos_filtered)
+        desc = self.soap.create(atoms)  
+        rows = [torch.tensor(desc[i].todense() if self.soap.sparse else desc[i], dtype=torch.float32)
+                for i in range(desc.shape[0])]
+        soap_tensor = torch.stack(rows)
+        
+        
+
+        setattr(data, self.attr_name, soap_tensor)
+        return data
+    
+    
+class CoulombMatrixPE(BaseTransform):
+
+    def __init__(self, max_atoms: int = 50, attr_name: str = "positional_encoding", sorting: str = "row_norm"):
+        self.max_atoms = max_atoms
+        self.attr_name = attr_name
+        self.sorting = sorting
+
+    @staticmethod
+    def compute_coulomb_matrix(Z: torch.Tensor, R: torch.Tensor):
+        N = Z.shape[0]
+        C = torch.zeros((N, N), dtype=torch.float32)
+        for i in range(N):
+            for j in range(N):
+                if i == j:
+                    C[i, j] = 0.5 * Z[i] ** 2.4  
+                else:
+                    dist = torch.norm(R[i] - R[j])
+                    C[i, j] = Z[i] * Z[j] / dist
+        return C
+
+    def __call__(self, data):
+        if not hasattr(data, "pos") or not hasattr(data, "z"):
+            raise AttributeError("Data must have pos [N,3] and z [N] attributes.")
+
+        Z = data.z
+        R = data.pos
+        C = self.compute_coulomb_matrix(Z, R)  
+        
+        if self.sorting == "row_norm":
+            row_norms = torch.linalg.norm(C, dim=1)
+            idx = torch.argsort(row_norms, descending=True)
+            C = C[idx][:, idx]
+
+        N = C.shape[0]
+        if N < self.max_atoms:
+            pad = self.max_atoms - N
+            C = torch.nn.functional.pad(C, (0, pad, 0, pad))
+        else:
+            C = C[:self.max_atoms, :self.max_atoms]
+
+
+        triu = torch.triu_indices(self.max_atoms, self.max_atoms)
+        vec = C[triu[0], triu[1]].unsqueeze(0) 
+
+        setattr(data, self.attr_name, vec)       
+        data.__dict__["_graph_level_pe"] = True  
         return data
