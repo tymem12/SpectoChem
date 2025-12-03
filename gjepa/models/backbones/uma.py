@@ -6,6 +6,9 @@ from torch_geometric.data import Batch, Data
 from fairchem.core import pretrained_mlip
 from fairchem.core.datasets.atomic_data import AtomicData, atomicdata_list_to_batch
 from fairchem.core.models.uma.escn_moe import eSCNMDMoeBackbone
+from fairchem.core.models.base import HydraModel
+
+from experiments.training_utils import DEVICE
 
 task_name = "omol"
 
@@ -33,8 +36,6 @@ def pyg_to_atomicdata(data: Data):
         max_neigh=32,          # max neighbors per atom
         task_name=task
     )
-
-    atomicdata = atomicdata.to(device)
 
     return atomicdata
 
@@ -85,15 +86,10 @@ def batch_to_atomicdata(batch: Batch) -> AtomicData:
 
     return atomicdata_batch
 
-# TODO fix running on GPU (currently there's an issue with some tensors being on cpu and others on gpu)
-device = "cpu"
-
 class UMAEncoder(nn.Module):
     handles_pos_encoding = True
 
     def mlip_model_predict_embedding(self, data: Data):
-        data = data.to(device)
-
         # `mlip.model` is HydraModel` (fairchem.core.models.base.HydraModel) (wrapped in `torch.optim.swa_utils.AveragedModel`,
         # with `fairchem.core.models.uma.escn_moe.eSCNMDMoeBackbone` as the backbone)
         # embedding.shape = [num_atoms_in_molecule, num_embeddings_per_atom, embedding_dim]
@@ -103,7 +99,7 @@ class UMAEncoder(nn.Module):
         else:
             data = pyg_to_atomicdata(data)
 
-        data = data.to(device)
+        data = data.to(DEVICE)
 
         # if using `mlip.model` (`HydraModel` wrapped in `AveragedModel`):
         # emb = self.mlip_model_backbone(data)[f"{task_name}_embeddings"]["embeddings"]
@@ -115,26 +111,33 @@ class UMAEncoder(nn.Module):
     def __init__(self, predictor_name: str = "uma-s-1p1"):
         """
         predictor_name: name of the pretrained UMA model to use
-        device: device to load the predictor on
+        DEVICE: DEVICE to load the predictor on
         """
         super().__init__()
         self.predictor_name = predictor_name
 
-        mlip = pretrained_mlip.get_predict_unit(predictor_name, device=device)
+        mlip = pretrained_mlip.get_predict_unit(predictor_name, device=DEVICE)
 
         # TODO: maybe this isn't necessary by default?
         for param in mlip.model.parameters():
             param.requires_grad = False
 
+        mlip_model_module: HydraModel = mlip.model.module
+
+        # without this we get the "some tensors were on cpu while others on gpu" error
+        mlip_model_module.to(DEVICE)
+
         # TODO: if `AveragedModel` "is a wrapper around a model that keeps a running average of the parameters during training"
         # then maybe we should use `mlip.model` instead of using the backbone directly?
-        self.mlip_model_backbone: eSCNMDMoeBackbone = mlip.model.module.backbone
+        #
+        # we could also use `mlip_model_module` directly since it calls the backbone, but it also returns other unnecessary information
+        self.mlip_model_backbone: eSCNMDMoeBackbone = mlip_model_module.backbone
 
         # Two atoms within cutoff distance
         pos_dummy = torch.tensor([[0.0, 0.0, 0.0],
-                                [0.0, 0.0, 1.0]], dtype=torch.float, device=device)  # 1 Å apart
-        z_dummy = torch.tensor([1, 6], dtype=torch.long, device=device)  # H and C
-        batch_dummy = torch.zeros(2, dtype=torch.long, device=device)
+                                [0.0, 0.0, 1.0]], dtype=torch.float)  # 1 Å apart
+        z_dummy = torch.tensor([1, 6], dtype=torch.long)  # H and C
+        batch_dummy = torch.zeros(2, dtype=torch.long)
 
         dummy_data = Data(pos=pos_dummy, z=z_dummy, batch=batch_dummy)
         with torch.no_grad():
