@@ -32,3 +32,5 @@ rdkit==2025.3.4
 fairchem-core==2.11.0
 ase==3.26.0
 pymatgen==2025.10.7
+
+dscribe=2.1.2
