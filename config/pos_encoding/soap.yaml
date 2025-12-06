@@ -11,3 +11,13 @@ transforms:
     center: false
     use_existing_edges: false
     include_input: false
+  # SOAP_Dsribe:
+  #   species: [1, 6, 7, 8, 16] # Only organic
+  #   rcut: 5.0
+  #   nmax: 6 #10
+  #   lmax: 3
+  #   sigma: 0.6 #0.5
+  #   sparse: true
+  #   attr_name: positional_encoding
+
+
