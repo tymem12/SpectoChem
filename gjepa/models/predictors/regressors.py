@@ -14,12 +14,12 @@ class RegressorBase(PredictorBase, ABC):
         out_channels: int,
         task_type: Literal["regression", "multiregression"],
         y_std=None,
-        prediction_type: Optional[Literal["pairs", "vector", 'lambda_binary']] = None,
+        prediction_type: Optional[Literal["pairs", "vector", 'only_lambdas']] = None,
         spectral_loss: Optional[str] = None,
         **loss_kwargs
     ):
         if prediction_type:
-            assert task_type == "multiregression"
+            assert task_type in ["multiregression", 'regression']
 
         if spectral_loss:
             assert prediction_type == "vector"
@@ -50,7 +50,7 @@ class LinearRegressor(RegressorBase):
         in_channels: int, out_channels: int,
         task_type: TaskType,
         y_std=None,
-        prediction_type: Optional[Literal["pairs", "vector", 'lambda_binary']] = None,
+        prediction_type: Optional[Literal["pairs", "vector", 'only_lambdas']] = None,
         spectral_loss: Optional[str] = None,
         **loss_kwargs
     ):

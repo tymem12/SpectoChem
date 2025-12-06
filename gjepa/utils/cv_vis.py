@@ -240,7 +240,7 @@ def _plot_pairs_graph_with_predictions(
         print("saves to:", filepath)
 
 
-def _plot_lambda_binary_predictions(
+def _plot_only_lambdas_predictions(
     data: pd.DataFrame,
     save_path: str,
     range_x: Tuple[float, float],
@@ -467,15 +467,15 @@ def _plot_binary_classification(data: pd.DataFrame, save_path: str) -> None:
 
 
 
-def plot_graph_with_predictions(data: pd.DataFrame, output_type: str, save_path: str, range: tuple):
+def plot_graph_with_predictions(data: pd.DataFrame, output_type: str, save_path: str, range: tuple, num_samples:int = 0):
     if output_type == 'vector':
-        _plot_vector_graph_with_predictions(data, save_path, range)
+        _plot_vector_graph_with_predictions(data, save_path, range, num_samples=num_samples)
 
     elif output_type == 'pairs':
-        _plot_pairs_graph_with_predictions(data, save_path, range)
+        _plot_pairs_graph_with_predictions(data, save_path, range, num_samples=num_samples)
 
-    elif output_type == 'lambda_binary':
-        _plot_lambda_binary_predictions(data, save_path, range)
+    elif output_type == 'only_lambdas':
+        _plot_only_lambdas_predictions(data, save_path, range, num_samples=num_samples)
     elif output_type == 'binary_classification':
         _plot_binary_classification(data, save_path)
 

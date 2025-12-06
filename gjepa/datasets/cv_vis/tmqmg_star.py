@@ -1,4 +1,5 @@
 import os
+import math
 from typing import Optional, Sequence, Tuple, List
 import torch
 import pandas as pd
@@ -29,7 +30,9 @@ class TMQMGStarDataset(InMemoryDataset):
         lorenzian: bool = False,
         sort_by_max_f: bool = True,
         standarize_lambda: bool = False,
-        standarize_f: bool = False
+        standarize_f: bool = False,
+        lambda_bucket_size: int = 0
+
 
     ):  
         self.filter_type = filter_type
@@ -48,8 +51,11 @@ class TMQMGStarDataset(InMemoryDataset):
         self.sort_by_max_f = sort_by_max_f
         self.standarize_lambda = standarize_lambda
         self.standarize_f = standarize_f
+        self.lambda_bucket_size = lambda_bucket_size
 
-        if self.prediction_type not in {"pairs", "vector", 'lambda_binary', 'binary_classification'}:
+
+        if self.prediction_type not in {"pairs", "vector", 'only_lambdas', 'binary_classification',
+                                        'binary_vector_multiclass', 'binary_vector_multilabel'}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
         super().__init__(root=root, transform=transform, pre_transform=pre_transform)
@@ -105,6 +111,7 @@ class TMQMGStarDataset(InMemoryDataset):
             f"filter_f_value-{self.filter_f_value}_"
             f"standarize_lambda-{self.standarize_lambda}_"
             f"standarize_f-{self.standarize_f}_"
+            f"lanbda_bucket_size-{self.lambda_bucket_size}_"
             f"pre{pre_transform}.pt"
         )
 
@@ -236,7 +243,7 @@ class TMQMGStarDataset(InMemoryDataset):
         return torch.tensor(hist, dtype=torch.float32).unsqueeze(0)
 
 
-    def _build_lambda_binary(self, transitions: List[Tuple[float, float]], num_pairs: int = 10) -> torch.Tensor:
+    def _build_only_lambdas(self, transitions: List[Tuple[float, float]], num_pairs: int = 10) -> torch.Tensor:
         vec = []
         for lam, f in transitions:
             if len(vec) < num_pairs:
@@ -255,9 +262,50 @@ class TMQMGStarDataset(InMemoryDataset):
             raise ValueError()
         return torch.tensor([[pos]], dtype=torch.float32)
 
+    def _build_binary_vector_multiclass(self, transitions: List[Tuple[float, float]]) -> torch.Tensor:
+        start, end = self.min_lambda, self.max_lambda
+        
+        if end <= start:
+            raise ValueError(f"max_lambda ({end}) musi być > min_lambda ({start}).")
+        
+        total_range = end - start
+        num_bins = math.ceil(total_range / self.lambda_bucket_size)
+        
+        hist = torch.zeros(num_bins, dtype=torch.int64)
+        
+        for lam, f in transitions:
+            if (start <= lam <= end) and (f > self.min_f_value):
+                idx = int((lam - start) / self.lambda_bucket_size)
+                
+                idx = max(0, min(idx, num_bins - 1))
+                hist[idx] = 1
+                break
+
+        return torch.tensor([idx], dtype=torch.long)
+
+
+    def _build_binary_vector_multilabel(self, transitions: List[Tuple[float, float]]) -> torch.Tensor:
+        start, end = self.min_lambda, self.max_lambda
+        
+        if end <= start:
+            raise ValueError(f"max_lambda ({end}) musi być > min_lambda ({start}).")
+        
+        total_range = end - start
+        num_bins = math.ceil(total_range / self.lambda_bucket_size)
+        
+        hist = torch.zeros(num_bins, dtype=torch.int64)
+        
+        for lam, f in transitions:
+            if (start <= lam <= end) and (f > self.min_f_value):
+                idx = int((lam - start) / self.lambda_bucket_size)
+                idx = max(0, min(idx, num_bins - 1))
+                hist[idx] = 1
+        return hist.unsqueeze(0)
+    
     def _prepare_the_output_format(self, transitions):
-        if not self.prediction_type in {"pairs", "vector", "lambda_binary", "binary_classification"}:
-            raise ValueError('prediction type did not mach: ', " pairs ", " vector ", " lambda_binary", " binary_classification")
+        if not self.prediction_type in {"pairs", "vector", "only_lambdas", "binary_classification",
+                                        'binary_vector_multiclass', 'binary_vector_multilabel'}:
+            raise ValueError('prediction type did not mach: ', " pairs ", " vector ", " only_lambdas", " binary_classification")
         if self.prediction_type == "pairs":
             num_pairs = self.num_states
             min_f_value = self.min_f_value
@@ -266,11 +314,15 @@ class TMQMGStarDataset(InMemoryDataset):
         elif self.prediction_type == 'vector':
             vector_range = self.prediction_params["range"]
             return self._build_absorption_vector(transitions, vector_range, self.lorenzian)
-        elif self.prediction_type == 'lambda_binary':
-            return self._build_lambda_binary(transitions, num_pairs=self.num_states)
+        elif self.prediction_type == 'only_lambdas':
+            return self._build_only_lambdas(transitions, num_pairs=self.num_states)
         elif self.prediction_type == 'binary_classification':
             y = self._build_binary(transitions, min_f_value=self.min_f_value)
             return y
+        elif self.prediction_type == 'binary_vector_multiclass':
+            return self._build_binary_vector_multiclass(transitions)
+        elif self.prediction_type == 'binary_vector_multilabel':
+            return self._build_binary_vector_multilabel(transitions)
 
 
     def process(self):
