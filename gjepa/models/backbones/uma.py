@@ -29,10 +29,10 @@ def pyg_to_atomicdata(data: Data):
     # `task_name` has to be specified
     atomicdata = AtomicData.from_ase(
         pyg_to_ase(data),
-        # rzeczywiście `eSCNMDBackbone::_generate_graph` generuje graf - nie ma edge_index tylko go dopiero tworzy
-        # (na podstawie `self.cutoff`=6, `self.max_neighbors`=300); pytanie co znaczy "otf_graph"
-        # (z tym parametr `cell` ze struktury `Atoms` is ignorowany)
-        # ^ ew. get_molecule zamiast get_structure w AtomsData.from_ase
+        # `eSCNMDBackbone::_generate_graph` generates the molecue graph - it doesn't have edge_index and creates it on the fly
+        # (based on `self.cutoff`=6, `self.max_neighbors`=300); the question is what is "otf_graph"
+        # (with this the`cell` parameter from `Atoms` structure is ignored)
+        # ^ could also use get_molecule instead get_structure in AtomsData.from_ase
         #r_edges=False,          # enable radius-based edges
         #radius=6.0,            # typical UMA cutoff
         #max_neigh=32,          # max neighbors per atom
@@ -134,6 +134,9 @@ class UMAEncoder(nn.Module):
             overrides=dict(
                 freeze_backbone=True,
                 backbone=dict(
+                    # without these overrides `eSCNMDBackbone::_get_displacement_and_cell` makes `data_dict["pos"]` and
+                    # `displacement` require grad which causes a long delay (due to optimizer step) after each train step in
+                    # the trainer (it takes about 2x as much as uma forward on cpu)
                     regress_forces=False,
                     regress_stress=False
                 )
