@@ -127,7 +127,7 @@ additional_loading_params:
 huggingface-cli login
 ```
 
-- specifying a huggingface access token (created at https://huggingface.co/settings/tokens) every time as an environment variable when running an UMA script - either in the command line:
+- specifying a huggingface access token (created at https://huggingface.co/settings/tokens) once (after downloading the model gets cached locally and so it can be late rused without a token) as an environment variable when running an UMA script - either in the command line:
 ```bash
 HF_TOKEN=... python script.py
 ```
