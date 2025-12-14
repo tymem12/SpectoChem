@@ -1,6 +1,5 @@
 import json
 import torch
-import pandas as pd
 from tqdm import tqdm
 from pathlib import Path
 from torch_geometric.loader import DataLoader
@@ -20,9 +19,10 @@ def generate_embeddings(
     encoder.to(DEVICE)
     encoder.eval()
 
-    all_embeddings = []
-    all_ids = []
-    all_splits = []
+    if metadata is None:
+        metadata = {}
+
+    save_dict = {"metadata": metadata}
 
     split_configs = [
         ("train", data_module.train_ds),
@@ -44,39 +44,34 @@ def generate_embeddings(
                 drop_last=False
             )
 
+            split_embeddings = []
+            split_ids = []
+
             for batch in tqdm(loader, desc=f"Generating {split_name!r} split embeddings"):
                 batch = batch.to(DEVICE)
 
                 out = encoder(batch)
 
-                all_embeddings.append(out.cpu())
+                split_embeddings.append(out.cpu())
 
                 if hasattr(batch, "CSD_code"):
-                    all_ids.extend(batch.CSD_code)
+                    split_ids.extend(batch.CSD_code)
                 else:
                     raise KeyError(f"Batch in {split_name} split missing 'CSD_code' attribute.")
 
-                all_splits.extend([split_name] * out.size(0))
+            split_tensor = torch.cat(split_embeddings, dim=0)
 
-    final_embeddings = torch.cat(all_embeddings, dim=0)
+            if len(split_ids) != split_tensor.shape[0]:
+                raise RuntimeError(f"Mismatch in {split_name}: {len(split_ids)} IDs vs {split_tensor.shape[0]} embeddings.")
 
-    if len(all_ids) != final_embeddings.shape[0]:
-        raise RuntimeError(f"Mismatch: {len(all_ids)} IDs vs {final_embeddings.shape[0]} embeddings.")
-
-    if metadata is None:
-        metadata = {}
-
-    save_dict = {
-        "embeddings": final_embeddings,
-        "ids": all_ids,
-        "splits": all_splits,
-        "generated_at": pd.Timestamp.now().isoformat(),
-        "metadata": metadata 
-    }
+            save_dict[split_name] = {
+                "embeddings": split_tensor,
+                "ids": split_ids
+            }
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = output_dir / "embeddings.pt"
+    output_path = output_dir / "raw.pt"
 
     print("Saving...")
 
@@ -84,29 +79,30 @@ def generate_embeddings(
 
     metadata_file_path = output_dir / "metadata.json"
 
-    with metadata_file_path.open(
-        "w", encoding="utf-8"
-    ) as f:
+    with metadata_file_path.open("w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=3)
 
-    print(f"Saved {final_embeddings.shape[0]} embeddings to {output_path.as_posix()!r}")
+    print(f"Saved embeddings to {output_path.as_posix()!r}")
 
 class PrecomputedEmbeddings:
-    def __init__(self, path: str, device: str = "cpu"):
-        print(f"Loading embeddings from {path}...")
-        data = torch.load(path, map_location=device, weights_only=False)
+    def __init__(self, dir_path: Path, device: str = "cpu"):
+        print(f"Loading embeddings from {dir_path.as_posix()!r}...")
+        emb_path = dir_path / "raw.pt"
 
-        self.embeddings = data["embeddings"]
-        self.ids = data["ids"]
-        self.splits = data["splits"]
-        self.metadata = data.get("metadata", {})
+        data = torch.load(emb_path, map_location=device, weights_only=False)
 
-        self._id_to_idx = {csd: i for i, csd in enumerate(self.ids)}
+        self.metadata = data.pop("metadata", {})
+        self.data_by_split = data
+
+        self._id_to_loc = {}
+        for split_name, content in self.data_by_split.items():
+            for i, csd in enumerate(content["ids"]):
+                self._id_to_loc[csd] = (split_name, i)
 
     def get_embedding(self, csd_code: str) -> torch.Tensor:
-        idx = self._id_to_idx[csd_code]
-        return self.embeddings[idx]
+        split, idx = self._id_to_loc[csd_code]
+        return self.data_by_split[split]["embeddings"][idx]
 
     def get_split(self, csd_code: str) -> str:
-        idx = self._id_to_idx[csd_code]
-        return self.splits[idx]
+        split, _ = self._id_to_loc[csd_code]
+        return split
