@@ -35,7 +35,7 @@ def generate_embeddings(
     with torch.no_grad():
         for split_name, dataset_subset in split_configs:
             if dataset_subset is None or len(dataset_subset) == 0:
-                continue
+                raise ValueError(f"Empty split {split_name!r}")
 
             loader = DataLoader(
                 dataset_subset,
@@ -44,7 +44,7 @@ def generate_embeddings(
                 drop_last=False
             )
 
-            for batch in tqdm(loader, desc=f"Generating {split_name} embeddings"):
+            for batch in tqdm(loader, desc=f"Generating {split_name!r} split embeddings"):
                 batch = batch.to(DEVICE)
 
                 out = encoder(batch)
