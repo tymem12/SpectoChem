@@ -122,8 +122,9 @@ class GraphLevelJEPAConfig(GraphJEPAConfig[T_graph_level_extractor], GraphLevelM
     context_ratio: float
     sampling_method: T_sampling_method
 
-class BaseGraphConfig(BaseModel, Generic[T, V], extra="forbid"):
+class GraphExperimentConfig(BaseModel, Generic[T, V], extra="forbid"):
     dataset: T
+    training: TrainingConfig
     pos_encoding: PosEncodingConfig | None
     model: SerializeAsAny[V]
 
@@ -141,30 +142,22 @@ class BaseGraphConfig(BaseModel, Generic[T, V], extra="forbid"):
 
         return cls(**raw_config, model=model_cfg, pos_encoding=pos_enc_cfg)
 
-class GraphExperimentConfig(BaseGraphConfig[T, V]):
-    training: TrainingConfig
-
 class ExperimentConfig(GraphExperimentConfig[DatasetConfig, ModelConfig]):
     model_cls_path_to_config_cls_mapping: ClassVar[dict[str, ModelConfig]] = {
         "gjepa.models.SupervisedNodeLevelGNN": ModelConfig,
         "gjepa.models.GJEPANodeModel": JEPAConfig
     }
 
-class GraphLevelDefinitionsMixin:
+class GraphLevelExperimentConfig(GraphExperimentConfig[GraphLevelDatasetConfig, GraphLevelModelConfig]):
     model_cls_path_to_config_cls_mapping: ClassVar[dict[str, GraphLevelModelConfig]] = {
         "gjepa.models.SupervisedGraphLevelGNN": GraphLevelModelConfig,
         "gjepa.models.GJEPAGraphLevelModel": GraphLevelJEPAConfig
     }
 
-class GraphLevelExperimentConfig(
-    GraphLevelDefinitionsMixin,
-    GraphExperimentConfig[GraphLevelDatasetConfig, GraphLevelModelConfig]
-):
-    pass
+class GraphLevelPrecomputedEmbeddingsConfig(BaseModel):
+    dataset: GraphLevelDatasetConfig
+    backbone: dict[str, Any]
+    pos_encoding: PosEncodingConfig | None = None
 
-class GraphLevelPrecomputeEmbeddingsConfig(
-    GraphLevelDefinitionsMixin,
-    BaseGraphConfig[GraphLevelDatasetConfig, GraphLevelModelConfig]
-):
     batch_size: int
     output_dir: Path

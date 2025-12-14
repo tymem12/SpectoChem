@@ -1,7 +1,7 @@
 defaults:
   - dataset: ???
   - pos_encoding: null
-  - model: ???
+  - backbone: ???
   - _self_
 
 batch_size: 128
