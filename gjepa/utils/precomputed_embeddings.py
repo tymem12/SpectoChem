@@ -14,7 +14,7 @@ from experiments.training_utils import DEVICE
 def generate_embeddings(
     data_module: GraphLevelDataModule,
     encoder: GNNEncoder,
-    output_path: Path,
+    output_dir: Path,
     metadata: Optional[dict[str]] = None
 ):
     encoder.to(DEVICE)
@@ -74,16 +74,22 @@ def generate_embeddings(
         "metadata": metadata 
     }
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = output_dir / "embeddings.pt"
+
+    print("Saving...")
 
     torch.save(save_dict, output_path)
 
-    with output_path.with_name("metadata.json").open(
+    metadata_file_path = output_dir / "metadata.json"
+
+    with metadata_file_path.open(
         "w", encoding="utf-8"
     ) as f:
         json.dump(metadata, f, indent=3)
 
-    print(f"Saved {final_embeddings.shape[0]} embeddings to {output_path}")
+    print(f"Saved {final_embeddings.shape[0]} embeddings to {output_path.as_posix()!r}")
 
 class PrecomputedEmbeddings:
     def __init__(self, path: str, device: str = "cpu"):

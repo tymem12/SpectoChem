@@ -36,20 +36,20 @@ def main(cfg: DictConfig) -> None:
 
     encoder_name = backbone_module_path.rsplit(".", maxsplit=1)[-1].removesuffix("Encoder")
 
-    output_subpath = Path(
+    output_subdir = Path(
         ds_config.name,
         ds_config.additional_loading_params["prediction_type"],
         encoder_name
     )
 
-    output_path = config.output_dir / output_subpath
+    output_dir = config.output_dir / output_subdir
 
     metadata = config.model_dump(
         mode="json"
     )
 
     generate_embeddings(
-        datamodule, encoder, output_path, metadata
+        datamodule, encoder, output_dir, metadata
     )
 
 if __name__ == "__main__":
