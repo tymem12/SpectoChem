@@ -1,0 +1,8 @@
+defaults:
+  - dataset: ???
+  - pos_encoding: null
+  - model: ???
+  - _self_
+
+batch_size: 128
+output_dir: "data/precomputed_embeddings"
