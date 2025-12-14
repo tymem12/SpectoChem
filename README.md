@@ -136,3 +136,8 @@ or in the Python script itself:
 import os
 os.environ["HF_TOKEN"] = "..."
 ```
+
+# Precomputing embeddings
+```bash
+PYTHONPATH=. python experiments/scripts/precompute_embeddings.py dataset=TMQM_SPECTO_LAMBDA_BINARY backbone=uma
+```
