@@ -18,8 +18,6 @@ def pyg_to_ase(data):
     return Atoms(
         numbers=numbers,
         positions=pos,
-        cell=np.eye(3),        # non-periodic
-        pbc=[False, False, False]
     )
 
 def pyg_to_atomicdata(data: Data):
@@ -31,9 +29,13 @@ def pyg_to_atomicdata(data: Data):
     # `task_name` has to be specified
     atomicdata = AtomicData.from_ase(
         pyg_to_ase(data),
-        r_edges=True,          # enable radius-based edges
-        radius=6.0,            # typical UMA cutoff
-        max_neigh=32,          # max neighbors per atom
+        # rzeczywiście `eSCNMDBackbone::_generate_graph` generuje graf - nie ma edge_index tylko go dopiero tworzy
+        # (na podstawie `self.cutoff`=6, `self.max_neighbors`=300); pytanie co znaczy "otf_graph"
+        # (z tym parametr `cell` ze struktury `Atoms` is ignorowany)
+        # ^ ew. get_molecule zamiast get_structure w AtomsData.from_ase
+        #r_edges=False,          # enable radius-based edges
+        #radius=6.0,            # typical UMA cutoff
+        #max_neigh=32,          # max neighbors per atom
         task_name=task
     )
 
@@ -103,7 +105,8 @@ class UMAEncoder(nn.Module):
 
         # if using `mlip.model` (`HydraModel` wrapped in `AveragedModel`):
         # emb = self.mlip_model_backbone(data)[f"{task_name}_embeddings"]["embeddings"]
-        emb = self.mlip_model_backbone(data)["node_embedding"]
+        result = self.mlip_model_backbone(data)
+        emb = result["node_embedding"]
         emb = pool_over_heads(emb)
 
         return emb
@@ -116,11 +119,26 @@ class UMAEncoder(nn.Module):
         super().__init__()
         self.predictor_name = predictor_name
 
-        mlip = pretrained_mlip.get_predict_unit(predictor_name, device=DEVICE)
-
-        # TODO: maybe this isn't necessary by default?
-        for param in mlip.model.parameters():
-            param.requires_grad = False
+        mlip = pretrained_mlip.get_predict_unit(
+            predictor_name,
+            device=DEVICE,
+            # default backbone config:
+            # {'num_experts': 32, 'sphere_channels': 128, 'max_neighbors': 300, 'edge_channels': 128, 'regress_stress': True,
+            # 'norm_type': 'rms_norm_sh', 'cs_emb_grad': True, 'moe_layer_type': 'pytorch', 'max_num_elements': 100,
+            # 'otf_graph': True, 'cutoff': 6, 'regress_forces': True, 'hidden_channels': 128, 'chg_spin_emb_type': 'rand_emb',
+            # 'moe_dropout': 0.05, 'use_global_embedding': False, 'mmax': 2, 'use_pbc_single': True, 'num_distance_basis': 64,
+            # 'num_layers': 4, 'ff_type': 'spectral', 'model': 'fairchem.core.models.uma.escn_moe.eSCNMDMoeBackbone',
+            # 'use_composition_embedding': True, 'lmax': 2, 'use_pbc': True, 'distance_function': 'gaussian',
+            # 'direct_forces': False, 'act_type': 'gate', 'dataset_list': ['oc20', 'omol', 'omat', 'odac', 'omc'],
+            # 'model_version': 1.1, 'always_use_pbc': False, 'activation_checkpointing': True, 'radius_pbc_version': 2}
+            overrides=dict(
+                freeze_backbone=True,
+                backbone=dict(
+                    regress_forces=False,
+                    regress_stress=False
+                )
+            )
+        )
 
         mlip_model_module: HydraModel = mlip.model.module
 
@@ -130,7 +148,10 @@ class UMAEncoder(nn.Module):
         # TODO: if `AveragedModel` "is a wrapper around a model that keeps a running average of the parameters during training"
         # then maybe we should use `mlip.model` instead of using the backbone directly?
         #
-        # we could also use `mlip_model_module` directly since it calls the backbone, but it also returns other unnecessary information
+        # we could also use `mlip_model_module` directly since it calls the backbone, but it also returns other unnecessary information -
+        # a dict with the following keys: ['oc20_energy', 'oc20_embeddings', 'oc20_forces', 'oc20_stress', 'odac_energy',
+        # 'odac_embeddings', 'odac_forces', 'odac_stress', 'omat_energy', 'omat_embeddings', 'omat_forces', 'omat_stress',
+        # 'omc_energy', 'omc_embeddings', 'omc_forces', 'omc_stress', 'omol_energy', 'omol_embeddings', 'omol_forces', 'omol_stress']
         self.mlip_model_backbone: eSCNMDMoeBackbone = mlip_model_module.backbone
 
         # Two atoms within cutoff distance
