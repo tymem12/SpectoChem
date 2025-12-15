@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 from torch import nn
 from ase import Atoms
 from torch_geometric.data import Batch, Data

@@ -4,5 +4,6 @@ defaults:
   - backbone: ???
   - _self_
 
-batch_size: 128
+pool: mean
+batch_size: 32
 output_dir: "data/precomputed_embeddings"

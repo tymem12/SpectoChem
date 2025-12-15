@@ -3,16 +3,24 @@ import torch
 from tqdm import tqdm
 from pathlib import Path
 from torch_geometric.loader import DataLoader
+from torch_geometric.nn.pool import (
+    global_add_pool,
+    global_max_pool,
+    global_mean_pool
+)
 
-from typing import Optional
+from typing import Literal, Optional
 
 from gjepa.models.encoders import GNNEncoder
 from gjepa.datasets.graph_level import GraphLevelDataModule
 from experiments.training_utils import DEVICE
 
+_EMBEDDINGS_FILE_NAME = "raw.pt"
+
 def generate_embeddings(
     data_module: GraphLevelDataModule,
     encoder: GNNEncoder,
+    pool: Literal["mean", "max", "sum"],
     output_dir: Path,
     metadata: Optional[dict[str]] = None
 ):
@@ -30,7 +38,17 @@ def generate_embeddings(
         ("test", data_module.test_ds)
     ]
 
-    print("Starting Inference...")
+    match pool:
+        case "max":
+            pool_fn = global_max_pool
+        case "mean":
+            pool_fn = global_mean_pool
+        case "sum":
+            pool_fn = global_add_pool
+        case _:
+            raise ValueError(f"Invalid pool method {pool!r}")
+
+    print("Starting encoder inference...")
 
     with torch.no_grad():
         for split_name, dataset_subset in split_configs:
@@ -50,19 +68,23 @@ def generate_embeddings(
             for batch in tqdm(loader, desc=f"Generating {split_name!r} split embeddings"):
                 batch = batch.to(DEVICE)
 
-                out = encoder(batch)
+                z = encoder(batch)
+                z = pool_fn(z, batch.batch)
 
-                split_embeddings.append(out.cpu())
+                split_embeddings.append(z.cpu())
 
                 if hasattr(batch, "CSD_code"):
                     split_ids.extend(batch.CSD_code)
                 else:
-                    raise KeyError(f"Batch in {split_name} split missing 'CSD_code' attribute.")
+                    raise KeyError(f"Batch in {split_name!r} split missing 'CSD_code' attribute.")
 
             split_tensor = torch.cat(split_embeddings, dim=0)
 
             if len(split_ids) != split_tensor.shape[0]:
-                raise RuntimeError(f"Mismatch in {split_name}: {len(split_ids)} IDs vs {split_tensor.shape[0]} embeddings.")
+                raise RuntimeError(
+                    f"Mismatch in {split_name!r}: {len(split_ids)} "
+                    f"IDs vs {split_tensor.shape[0]} embeddings."
+                )
 
             save_dict[split_name] = {
                 "embeddings": split_tensor,
@@ -71,7 +93,7 @@ def generate_embeddings(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = output_dir / "raw.pt"
+    output_path = output_dir / _EMBEDDINGS_FILE_NAME
 
     print("Saving...")
 
@@ -87,7 +109,7 @@ def generate_embeddings(
 class PrecomputedEmbeddings:
     def __init__(self, dir_path: Path, device: str = "cpu"):
         print(f"Loading embeddings from {dir_path.as_posix()!r}...")
-        emb_path = dir_path / "raw.pt"
+        emb_path = dir_path / _EMBEDDINGS_FILE_NAME
 
         data = torch.load(emb_path, map_location=device, weights_only=False)
 

@@ -161,3 +161,4 @@ class GraphLevelPrecomputedEmbeddingsConfig(BaseModel):
 
     batch_size: int
     output_dir: Path
+    pool: Literal["mean", "max", "sum"]

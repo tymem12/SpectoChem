@@ -42,6 +42,8 @@ def main(cfg: DictConfig) -> None:
         encoder_name
     )
 
+    pool = config.pool
+
     output_dir = config.output_dir / output_subdir
 
     metadata = config.model_dump(
@@ -49,7 +51,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     generate_embeddings(
-        datamodule, encoder, output_dir, metadata
+        datamodule, encoder, pool, output_dir, metadata
     )
 
 if __name__ == "__main__":
