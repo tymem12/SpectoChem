@@ -108,15 +108,17 @@ def generate_embeddings(
 
 class PrecomputedEmbeddings:
     def __init__(self, dir_path: Path, device: str = "cpu"):
-        print(f"Loading embeddings from {dir_path.as_posix()!r}...")
         emb_path = dir_path / _EMBEDDINGS_FILE_NAME
+
+        print(f"Loading embeddings from {emb_path.as_posix()!r}...")
 
         data = torch.load(emb_path, map_location=device, weights_only=False)
 
         self.metadata = data.pop("metadata", {})
-        self.data_by_split = data
+        self.data_by_split: dict[str, dict[str, torch.Tensor | list[str]]] = data
 
-        self._id_to_loc = {}
+        self._id_to_loc: dict[str, tuple[str, int]] = {}
+
         for split_name, content in self.data_by_split.items():
             for i, csd in enumerate(content["ids"]):
                 self._id_to_loc[csd] = (split_name, i)
