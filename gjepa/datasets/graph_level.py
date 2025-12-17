@@ -115,7 +115,6 @@ class GraphLevelDataModule(GraphDataModule):
         print(f'len of val is {len(self.val_ds)}')
         print(f'len of test is {len(self.test_ds)}')
 
-        print(self.test_ds[0].y)
 
     def _standarize_output(self, type: str, standarize_lambda: bool, standarize_f: bool):
         if self.train_ds is None:
@@ -236,7 +235,7 @@ class GraphLevelDataModule(GraphDataModule):
             self.test_ds = _standardize_dataset(self.test_ds)
             return
 
-        if type == "lambda_binary":
+        if type == "only_lambdas":
             if not standarize_lambda:
                 return
 
@@ -248,7 +247,7 @@ class GraphLevelDataModule(GraphDataModule):
                     lambda_vals.append(val.item())
 
             if len(lambda_vals) == 0:
-                raise RuntimeError("No lambda values found in train set for 'lambda_binary' standardization.")
+                raise RuntimeError("No lambda values found in train set for 'only_lambdas' standardization.")
 
             lambda_tensor = torch.tensor(lambda_vals, dtype=torch.float32)
             lambda_mean = lambda_tensor.mean()
@@ -277,11 +276,11 @@ class GraphLevelDataModule(GraphDataModule):
             self.val_ds = _standardize_dataset(self.val_ds)
             self.test_ds = _standardize_dataset(self.test_ds)
             return
-        if type == "binary_classification":
+        if type in ["binary_classification",'binary_vector_multiclass', 'binary_vector_multilabel']:
             print('SHAPE: ', self.train_ds[0].y.shape)
             return
-        
-        raise ValueError(f"Unknown standarization type: {type!r}. Expected 'pairs', 'vector', or 'lambda_binary'.")
+        else:
+            raise ValueError(f"Unknown standarization type: {type!r}. Expected 'pairs', 'vector', or 'only_lambdas'.")
 
 
 
@@ -429,25 +428,21 @@ class GraphJEPASampler(Dataset):
         all_nodes = list(range(num_nodes))
         random.shuffle(all_nodes)
 
-        # context nodes
         num_context = int(self.context_ratio * num_nodes)
 
         context_nodes = all_nodes[:num_context]
 
-        # target nodes (from remaining)
         remaining_nodes = all_nodes[num_context:]
         n_remaining = len(remaining_nodes)
         num_target = int(self.target_ratio * n_remaining)
         num_target = max(1, num_target)
         target_nodes = remaining_nodes[:num_target]
 
-        # build masks
         context_mask = torch.zeros(num_nodes, dtype=torch.bool)
         context_mask[context_nodes] = True
         target_mask = torch.zeros(num_nodes, dtype=torch.bool)
         target_mask[target_nodes] = True
 
-        # filter edges
         edge_index = data.edge_index
         context_edges = edge_index[:, context_mask[edge_index[0]] & context_mask[edge_index[1]]]
 

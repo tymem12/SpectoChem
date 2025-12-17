@@ -3,7 +3,7 @@ from typing import Any, ClassVar, Literal, Type, TypeVar, Generic
 
 from pydantic import BaseModel, Extra, SerializeAsAny, model_validator
 
-TaskType = Literal["binary", "multiclass", "regression", "multiregression"]
+TaskType = Literal["binary", "multiclass", "regression", "multiregression", 'multilabel']
 MetricMode = Literal["min", "max"]
 T_extractor = Literal["node", "subgraph"]
 T_gjepa_predictor = Literal["mlp", "transformer"]

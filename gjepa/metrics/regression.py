@@ -40,7 +40,6 @@ class SpectralMetric(Metric):
     def update(self, preds: torch.Tensor, target: torch.Tensor):
         with torch.no_grad():
             vals = self.func(preds, target, **self.func_kwargs)
-            # Average over batch if vector output
             if vals.ndim > 0:
                 vals = vals.mean()
             self.values += vals.detach().cpu()
@@ -52,7 +51,7 @@ class SpectralMetric(Metric):
 def get_default_regression_metrics(
     task_type: Literal["regression", "multiregression"], output_dim: int,
     y_std: torch.Tensor | None = None,
-    prediction_type: Optional[Literal["pairs", "vector", 'lambda_binary']] = None,
+    prediction_type: Optional[Literal["pairs", "vector", 'only_lambdas']] = None,
     **kwargs
 ) -> MetricCollection:
     """Provides metrics suitable for regression tasks (univariate or multivariate)."""
