@@ -3,10 +3,10 @@
       "name": "TMQM_SPECTO",
       "root_dir": "data/datasets/TMQM_SPECTO",
       "in_channels": 1,
-      "out_channels": 2,
-      "task_type": "multiregression",
-      "main_metric": "MAE",
-      "metric_mode": "min",
+      "out_channels": 1,
+      "task_type": "binary",
+      "main_metric": "F1",
+      "metric_mode": "max",
       "pre_transforms": {},
       "transforms": {
          "AddEdgesAndDistances": {
@@ -18,18 +18,18 @@
          0.1
       ],
       "additional_loading_params": {
-         "prediction_type": "lambda_binary",
-         "num_states": 2,
+         "prediction_type": "binary_classification",
+         "num_states": 1,
          "vis_range": [
             380,
             650
          ],
          "block_3_only": true,
-         "filter_type": "one_visible_lambda",
-         "filter_f_value": 0.001,
+         "filter_type": "all_samples",
+         "filter_f_value": -1,
          "min_f_value": 0.001,
          "sort_by_max_f": false,
-         "standarize_lambda": true,
+         "standarize_lambda": false,
          "standarize_f": false
       },
       "target_standarization": null
