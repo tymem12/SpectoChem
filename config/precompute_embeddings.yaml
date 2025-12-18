@@ -6,4 +6,5 @@ defaults:
 
 pool: mean
 batch_size: 1
+output_model_subdir: null
 output_dir: "data/precomputed_embeddings"
