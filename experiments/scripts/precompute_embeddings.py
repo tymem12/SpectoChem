@@ -46,6 +46,11 @@ def main(cfg: DictConfig) -> None:
 
     output_dir = config.output_dir / output_subdir
 
+    output_model_subdir = config.output_model_subdir
+
+    if output_model_subdir is not None:
+        output_dir /= output_model_subdir
+
     metadata = config.model_dump(
         mode="json"
     )
