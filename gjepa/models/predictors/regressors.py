@@ -44,19 +44,73 @@ class RegressorBase(PredictorBase, ABC):
         return x
 
 
+# class LinearRegressor(RegressorBase):
+#     def __init__(
+#         self,
+#         in_channels: int, out_channels: int,
+#         task_type: TaskType,
+#         y_std=None,
+#         prediction_type: Optional[Literal["pairs", "vector", 'only_lambdas']] = None,
+#         spectral_loss: Optional[str] = None,
+#         **loss_kwargs
+#     ):
+#         super().__init__(out_channels, task_type, y_std, prediction_type, spectral_loss, **loss_kwargs)
+#         self.linear = nn.Linear(in_channels, out_channels)
+
+
+#     def forward(self, x: Tensor) -> Tensor:
+#         return self.linear(x)
+
+import torch
+from torch import nn, Tensor
+from typing import Optional, Literal
+
 class LinearRegressor(RegressorBase):
     def __init__(
         self,
-        in_channels: int, out_channels: int,
+        in_channels: int,
+        out_channels: int,
         task_type: TaskType,
         y_std=None,
-        prediction_type: Optional[Literal["pairs", "vector", 'only_lambdas']] = None,
+        prediction_type: Optional[Literal["pairs", "vector", "only_lambdas"]] = None,
         spectral_loss: Optional[str] = None,
-        **loss_kwargs
+        hidden: Optional[int] = None,
+        dropout: float = 0.1,
+        **loss_kwargs,
     ):
-        super().__init__(out_channels, task_type, y_std, prediction_type, spectral_loss, **loss_kwargs)
-        self.linear = nn.Linear(in_channels, out_channels)
+        super().__init__(
+            out_channels=out_channels,
+            task_type=task_type,
+            y_std=y_std,
+            prediction_type=prediction_type,
+            spectral_loss=spectral_loss,
+            **loss_kwargs,
+        )
 
+        hidden = hidden or in_channels
+
+        self.pre = nn.Sequential(
+            nn.LayerNorm(in_channels),
+            nn.Linear(in_channels, hidden),
+            nn.GELU(),
+        )
+
+        self.block = nn.Sequential(
+            nn.LayerNorm(hidden),
+            nn.Linear(hidden, hidden),
+            nn.GELU(),
+            nn.Dropout(dropout),
+        )
+
+        self.out = nn.Linear(hidden, out_channels)
+
+        self.skip = (
+            nn.Identity()
+            if hidden == hidden
+            else nn.Linear(in_channels, hidden)
+        )
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.linear(x)
+        h = self.pre(x)
+        h = h + self.block(h)
+        return self.out(h)

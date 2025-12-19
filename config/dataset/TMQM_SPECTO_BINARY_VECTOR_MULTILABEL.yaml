@@ -22,6 +22,7 @@ additional_loading_params:
   standarize_lambda: false
   standarize_f: false
   lambda_bucket_size: 5
+  load_representations: data/precomputed_embeddings/TMQM_SPECTO/binary_classification/UMA
 
 
 

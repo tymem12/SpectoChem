@@ -4,6 +4,7 @@ from .gps import GraphGPS
 from .schnet import SchNetEncoder
 from .dimenet import DimeNetEncoder
 from .uma import UMAEncoder
+from .dummy_model import DummyModel
 
 __all__ = [
     "CustomGNN",
@@ -14,5 +15,6 @@ __all__ = [
     "GraphGPS",
     "SchNetEncoder",
     "DimeNetEncoder",
-    "UMAEncoder"
+    "UMAEncoder",
+    "DummyModel"
 ]
