@@ -41,5 +41,6 @@
    "pos_encoding": null,
    "batch_size": 1,
    "output_dir": "data/precomputed_embeddings",
-   "pool": "mean"
+   "pool": "mean",
+   "output_model_subdir": null
 }
