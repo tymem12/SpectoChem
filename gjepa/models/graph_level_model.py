@@ -17,6 +17,8 @@ from gjepa.models.encoders import GNNEncoder
 from gjepa.models.predictors import LinearClassifier, LinearRegressor
 from gjepa.utils.lr_scheduler import LinearWarmupCosineAnnealingLR  # type: ignore
 from gjepa.utils.cv_vis import plot_graph_with_predictions
+from gjepa.datasets.cv_vis.standarizer_singleton import StandarizerSingletonF, StandarizerSingletonLambda
+
 
 class SupervisedGraphLevelGNN(LightningModule):
     """Graph-level training."""
@@ -95,6 +97,15 @@ class SupervisedGraphLevelGNN(LightningModule):
             }
         )
         self.log("test_loss", loss, batch_size=batch.batch_size, prog_bar=False)
+        standarized_lambda_val = StandarizerSingletonLambda.get_values()
+        standarized_f_val = StandarizerSingletonF.get_values()
+        if standarized_lambda_val['standarize']:
+            self.log('lambda_mean',standarized_lambda_val['mean_lambda'])
+            self.log('lambda_std',standarized_lambda_val['std_lambda'])
+        if standarized_f_val['standarize']:
+            self.log('f_mean',standarized_f_val['mean_f'])
+            self.log('f_std',standarized_f_val['std_f'])
+
 
         return loss
 
@@ -105,8 +116,19 @@ class SupervisedGraphLevelGNN(LightningModule):
 
     def _shared_step(self, batch: Data, split: str) -> Tensor:
         logits = self.forward(batch)
-        y_gt = batch.y
-        loss = self.predictor.loss_func(input=logits, target=y_gt)
+        y_gt = batch.y  # whatever the dataset gave us
+
+        task_type = self.config.dataset.task_type
+
+        if task_type in ("multilabel", "binary", "binary_multitask", 'multiregression', 'regression'):
+            y_loss = y_gt.float()
+        elif task_type == "multiclass":
+            y_loss = y_gt.long()
+        else:
+            raise ValueError(f"Unknown task_type: {task_type}")
+
+        loss = self.predictor.loss_func(input=logits, target=y_loss)
+
     
         probas = self.predictor.logits_to_proba(logits)
         metrics = self.metrics[f"{split}_metrics"]
@@ -124,6 +146,10 @@ class SupervisedGraphLevelGNN(LightningModule):
 
     def on_test_end(self) -> None:
 
+        output_params = self.config.dataset.additional_loading_params
+
+        if output_params['prediction_type'] == 'binary_vector_multiclass':
+            return
         if len(self._test_outputs) == 0:
             return
 
@@ -153,7 +179,6 @@ class SupervisedGraphLevelGNN(LightningModule):
         os.makedirs(save_dir, exist_ok=True)
         csv_path = os.path.join(save_dir, "test_predictions_wide.csv")
         df.to_csv(csv_path, index=False)
-        output_params = self.config.dataset.additional_loading_params
 
         plot_graph_with_predictions(df, output_params['prediction_type'],save_dir, tuple(output_params['vis_range']))
         print(f"[SupervisedGraphLevelGNN] saved predictions to: {csv_path}")

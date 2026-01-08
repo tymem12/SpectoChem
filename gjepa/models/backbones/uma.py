@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 from torch import nn
 from ase import Atoms
 from torch_geometric.data import Batch, Data
@@ -41,8 +40,7 @@ def pyg_to_atomicdata(data: Data):
 
     return atomicdata
 
-# TODO: instead of pooling over heads we could also concatenate last two dims and have one larger embedding
-def pool_over_heads(atom_embeddings: torch.Tensor, method: str = "mean") -> torch.Tensor:
+def pool_over_heads(atom_embeddings: torch.Tensor, method: str = "first_channel") -> torch.Tensor:
     """
     Pool UMA per-head embeddings into a single per-atom embedding.
     
@@ -59,6 +57,8 @@ def pool_over_heads(atom_embeddings: torch.Tensor, method: str = "mean") -> torc
         return atom_embeddings.sum(dim=1)
     elif method == "max":
         return atom_embeddings.max(dim=1).values
+    elif method == "first_channel":
+        return atom_embeddings[..., 0, :]
     else:
         raise ValueError(f"Unknown pooling method: {method}")
 
@@ -107,17 +107,23 @@ class UMAEncoder(nn.Module):
         # emb = self.mlip_model_backbone(data)[f"{task_name}_embeddings"]["embeddings"]
         result = self.mlip_model_backbone(data)
         emb = result["node_embedding"]
-        emb = pool_over_heads(emb)
+        emb = pool_over_heads(emb, self.head_pool)
 
         return emb
 
-    def __init__(self, predictor_name: str = "uma-s-1p1"):
+    def __init__(
+        self,
+        predictor_name: str = "uma-s-1p1",
+        head_pool: str = "first_channel"
+    ):
         """
         predictor_name: name of the pretrained UMA model to use
         DEVICE: DEVICE to load the predictor on
         """
         super().__init__()
         self.predictor_name = predictor_name
+
+        self.head_pool = head_pool
 
         mlip = pretrained_mlip.get_predict_unit(
             predictor_name,
@@ -155,21 +161,10 @@ class UMAEncoder(nn.Module):
         # a dict with the following keys: ['oc20_energy', 'oc20_embeddings', 'oc20_forces', 'oc20_stress', 'odac_energy',
         # 'odac_embeddings', 'odac_forces', 'odac_stress', 'omat_energy', 'omat_embeddings', 'omat_forces', 'omat_stress',
         # 'omc_energy', 'omc_embeddings', 'omc_forces', 'omc_stress', 'omol_energy', 'omol_embeddings', 'omol_forces', 'omol_stress']
-        self.mlip_model_backbone: eSCNMDMoeBackbone = mlip_model_module.backbone
+        backbone: eSCNMDMoeBackbone = mlip_model_module.backbone
 
-        # Two atoms within cutoff distance
-        pos_dummy = torch.tensor([[0.0, 0.0, 0.0],
-                                [0.0, 0.0, 1.0]], dtype=torch.float)  # 1 Å apart
-        z_dummy = torch.tensor([1, 6], dtype=torch.long)  # H and C
-        batch_dummy = torch.zeros(2, dtype=torch.long)
-
-        dummy_data = Data(pos=pos_dummy, z=z_dummy, batch=batch_dummy)
-        with torch.no_grad():
-            h_dummy = self(dummy_data)
-
-        out_channels = h_dummy.shape[-1]
-
-        self.out_channels = out_channels
+        self.mlip_model_backbone = backbone
+        self.out_channels = backbone.sphere_channels
 
     def forward(self, batch: Data):
         return self.mlip_model_predict_embedding(batch)

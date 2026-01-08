@@ -3,7 +3,7 @@ from typing import Any, ClassVar, Literal, Type, TypeVar, Generic
 
 from pydantic import BaseModel, Extra, SerializeAsAny, model_validator
 
-TaskType = Literal["binary", "multiclass", "regression", "multiregression"]
+TaskType = Literal["binary", "multiclass", "regression", "multiregression", 'multilabel']
 MetricMode = Literal["min", "max"]
 T_extractor = Literal["node", "subgraph"]
 T_gjepa_predictor = Literal["mlp", "transformer"]
@@ -153,3 +153,14 @@ class GraphLevelExperimentConfig(GraphExperimentConfig[GraphLevelDatasetConfig, 
         "gjepa.models.SupervisedGraphLevelGNN": GraphLevelModelConfig,
         "gjepa.models.GJEPAGraphLevelModel": GraphLevelJEPAConfig
     }
+
+class GraphLevelPrecomputedEmbeddingsConfig(BaseModel):
+    dataset: GraphLevelDatasetConfig
+    backbone: dict[str, Any]
+    pos_encoding: PosEncodingConfig | None = None
+
+    batch_size: int
+    output_dir: Path
+    pool: Literal["mean", "max", "sum"] | None
+
+    output_model_subdir: Path | None = None

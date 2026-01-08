@@ -48,12 +48,14 @@ class SpectralLoss(nn.Module):
         return loss_vals.mean()  # reduce over batch
 
 def get_classification_loss(
-    task_type: Literal["binary", "binary_multitask", "multiclass"],
+    task_type: Literal["binary", "binary_multitask", "multiclass", "multilabel"],
 ) -> nn.Module:
     if task_type == "binary":
         return BCEWithLogitsLoss()
     elif task_type == "multiclass":
         return CrossEntropyLoss()
+    elif task_type == "multilabel":
+        return BCEWithLogitsLoss()
     else:
         raise ValueError(f"Invalid task_type for classification loss: {task_type}")
 
