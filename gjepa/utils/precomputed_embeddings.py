@@ -9,6 +9,8 @@ from torch_geometric.nn.pool import (
     global_mean_pool
 )
 
+from torch_geometric.utils import unbatch
+
 from typing import Literal, Optional
 
 from gjepa.models.encoders import GNNEncoder
@@ -16,11 +18,10 @@ from gjepa.datasets.graph_level import GraphLevelDataModule
 from experiments.training_utils import DEVICE
 
 _EMBEDDINGS_FILE_NAME = "raw.pt"
-
 def generate_embeddings(
     data_module: GraphLevelDataModule,
     encoder: GNNEncoder,
-    pool: Literal["mean", "max", "sum"],
+    pool: Optional[Literal["mean", "max", "sum"]],
     output_dir: Path,
     metadata: Optional[dict[str]] = None
 ):
@@ -38,15 +39,18 @@ def generate_embeddings(
         ("test", data_module.test_ds)
     ]
 
-    match pool:
-        case "max":
-            pool_fn = global_max_pool
-        case "mean":
-            pool_fn = global_mean_pool
-        case "sum":
-            pool_fn = global_add_pool
-        case _:
-            raise ValueError(f"Invalid pool method {pool!r}")
+    if pool is None:
+        pool_fn = None
+    else:
+        match pool:
+            case "max":
+                pool_fn = global_max_pool
+            case "mean":
+                pool_fn = global_mean_pool
+            case "sum":
+                pool_fn = global_add_pool
+            case _:
+                raise ValueError(f"Invalid pool method {pool!r}")
 
     print("Starting encoder inference...")
 
@@ -69,38 +73,50 @@ def generate_embeddings(
                 batch = batch.to(DEVICE)
 
                 z = encoder(batch)
-                z = pool_fn(z, batch.batch)
 
-                split_embeddings.append(z.cpu())
+                if pool_fn:
+                    # pooling active - reduces [N_total_atoms, Dim] -> [Batch_Size, Dim]
+                    z_pooled = pool_fn(z, batch.batch)
+                    split_embeddings.append(z_pooled.cpu())
+                else:
+                    # no pooling - we want per-atom embeddings per molecule
+                    # unbatch splits [N_total_atoms, Dim] -> list of [N_atoms_i, Dim]
+                    z_unbatched = unbatch(z, batch.batch)
+                    split_embeddings.extend([t.cpu() for t in z_unbatched])
 
                 if hasattr(batch, "CSD_code"):
                     split_ids.extend(batch.CSD_code)
                 else:
                     raise KeyError(f"Batch in {split_name!r} split missing 'CSD_code' attribute.")
 
-            split_tensor = torch.cat(split_embeddings, dim=0)
+            if pool_fn:
+                # if pooled, we can stack them into one efficient tensor
+                final_data = torch.cat(split_embeddings, dim=0)
+            else:
+                # if unpooled, we must keep them as a lust of tensors
+                # (concatenation is invalid because molecules have different sizes)
+                final_data = split_embeddings
 
-            if len(split_ids) != split_tensor.shape[0]:
+            count = final_data.shape[0] if isinstance(final_data, torch.Tensor) else len(final_data)
+
+            if len(split_ids) != count:
                 raise RuntimeError(
                     f"Mismatch in {split_name!r}: {len(split_ids)} "
-                    f"IDs vs {split_tensor.shape[0]} embeddings."
+                    f"IDs vs {count} embeddings."
                 )
 
             save_dict[split_name] = {
-                "embeddings": split_tensor,
+                "embeddings": final_data,
                 "ids": split_ids
             }
 
     output_dir.mkdir(parents=True, exist_ok=True)
-
     output_path = output_dir / _EMBEDDINGS_FILE_NAME
 
     print("Saving...")
-
     torch.save(save_dict, output_path)
 
     metadata_file_path = output_dir / "metadata.json"
-
     with metadata_file_path.open("w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=3)
 
@@ -115,7 +131,7 @@ class PrecomputedEmbeddings:
         data = torch.load(emb_path, map_location=device, weights_only=False)
 
         self.metadata = data.pop("metadata", {})
-        self.data_by_split: dict[str, dict[str, torch.Tensor | list[str]]] = data
+        self.data_by_split: dict[str, dict[str, torch.Tensor | list[torch.Tensor] | list[str]]] = data
 
         self._id_to_loc: dict[str, tuple[str, int]] = {}
 
