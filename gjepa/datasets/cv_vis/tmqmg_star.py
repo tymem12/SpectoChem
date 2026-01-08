@@ -388,13 +388,10 @@ class TMQMGStarDataset(InMemoryDataset):
             smiles = "" if pd.isna(row["SMILES"]) else str(row["SMILES"])
             origin_id = None if pd.isna(row["origin_ID"]) else str(row["origin_ID"])
             csd_code = None if pd.isna(row["CSD_code"]) else str(row["CSD_code"])
-            # those 5 compounds that were not calulated
-            if csd_code in ['ISALCU', 'NEZQEO', 'EACBCR', 'OJONAC', 'CERFUA']:
-                continue
             kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
             if self.load_representations:
                 emb = self.precomputed_embedings.get_embedding(csd_code)
-                kwargs['representation'] = emb.view(1, 128)
+                kwargs['representation'] = emb
 
             transitions = self.filter_data_with_criterion(row,self.filter_type)
             if not transitions:

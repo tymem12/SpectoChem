@@ -5,6 +5,8 @@ from .schnet import SchNetEncoder
 from .dimenet import DimeNetEncoder
 from .uma import UMAEncoder
 from .dummy_model import DummyModel
+from .gated_attention_pool import GatedAttentionPoolModel
+from .transformer_attention_pool import TransformerAttentionPoolModel
 
 __all__ = [
     "CustomGNN",
@@ -16,5 +18,7 @@ __all__ = [
     "SchNetEncoder",
     "DimeNetEncoder",
     "UMAEncoder",
-    "DummyModel"
+    "DummyModel",
+    "GatedAttentionPoolModel",
+    "TransformerAttentionPoolModel",
 ]
