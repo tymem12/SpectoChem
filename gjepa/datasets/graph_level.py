@@ -62,6 +62,11 @@ class GraphLevelDataModule(GraphDataModule):
         self.y_std: torch.Tensor | None = None
 
     def setup(self, stage: str) -> None:
+        # torch trainer calls `setup()` again with `stage="fit` during testing, which causes setting
+        # train, val, test ds again - with a different split - which means a very possible data leak
+        if stage != "fit":
+            return
+
         name = self.config.name
 
         split_ratios = self.config.split_ratios
