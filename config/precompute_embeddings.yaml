@@ -1,0 +1,10 @@
+defaults:
+  - dataset: ???
+  - pos_encoding: null
+  - backbone: ???
+  - _self_
+
+pool: null
+batch_size: 1
+output_model_subdir: null
+output_dir: "data/precomputed_embeddings"
