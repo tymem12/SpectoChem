@@ -5,12 +5,6 @@ from torch_geometric.utils import softmax
 
 
 class GatedAttentionPoolModel(nn.Module):
-    """
-    Learnable gated-attention pooling:
-      a_i = softmax_graph( w^T (tanh(Wx_i) * sigmoid(Vx_i)) )
-      graph = sum_i a_i * x_i
-    """
-
     def __init__(self, hidden_channels: int = 128, gate_hidden: int = 128, dropout: float = 0.1, **kwargs):
         super().__init__()
         self.handles_pos_encoding = True
@@ -35,23 +29,20 @@ class GatedAttentionPoolModel(nn.Module):
         self.out_norm = nn.LayerNorm(hidden_channels)
 
     def forward(self, batch: Data):
-        x = self.input_proj(batch.representation)  # [N, C]
+        x = self.input_proj(batch.representation)
         x = self.dropout(x)
 
-        # gated attention score per node
-        h = self.attn_tanh(x) * self.attn_sigmoid(x)   # [N, gate_hidden]
-        score = self.attn_out(h).squeeze(-1)           # [N]
+        h = self.attn_tanh(x) * self.attn_sigmoid(x)
+        score = self.attn_out(h).squeeze(-1)
 
-        # normalize scores within each graph
-        alpha = softmax(score, batch.batch)            # [N]
+        alpha = softmax(score, batch.batch)
 
-        # weighted sum per graph
         graph_emb = torch.zeros(
             (int(batch.batch.max()) + 1, x.size(-1)),
             device=x.device,
             dtype=x.dtype
         )
-        graph_emb.index_add_(0, batch.batch, x * alpha.unsqueeze(-1))  # [B, C]
+        graph_emb.index_add_(0, batch.batch, x * alpha.unsqueeze(-1))
 
         output_shape = self.out_norm(graph_emb)
         return output_shape
