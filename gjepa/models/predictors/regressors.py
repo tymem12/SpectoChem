@@ -2,7 +2,7 @@ from abc import ABC
 from typing import Literal, Optional
 
 from torch import Tensor, nn
-
+import torch
 from gjepa.config import TaskType
 from gjepa.metrics.regression import get_default_regression_metrics
 from gjepa.models.predictors import PredictorBase

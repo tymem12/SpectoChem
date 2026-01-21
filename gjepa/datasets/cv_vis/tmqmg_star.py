@@ -1,5 +1,6 @@
 import os
 import math
+from pathlib import Path
 from typing import Optional, Sequence, Tuple, List
 import torch
 import pandas as pd
@@ -31,7 +32,8 @@ class TMQMGStarDataset(InMemoryDataset):
         sort_by_max_f: bool = True,
         standarize_lambda: bool = False,
         standarize_f: bool = False,
-        lambda_bucket_size: int = 0
+        lambda_bucket_size: int = 0,
+        load_representations: str = ''
 
 
     ):  
@@ -52,12 +54,18 @@ class TMQMGStarDataset(InMemoryDataset):
         self.standarize_lambda = standarize_lambda
         self.standarize_f = standarize_f
         self.lambda_bucket_size = lambda_bucket_size
+        self.load_representations = load_representations
 
 
         if self.prediction_type not in {"pairs", "vector", 'only_lambdas', 'binary_classification',
                                         'binary_vector_multiclass', 'binary_vector_multilabel'}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
+        
+        if self.load_representations:
+            from gjepa.utils.precomputed_embeddings import PrecomputedEmbeddings
+            self.precomputed_embedings = PrecomputedEmbeddings(Path(self.load_representations))
+            print(self.precomputed_embedings)
         super().__init__(root=root, transform=transform, pre_transform=pre_transform)
 
         if force_reprocess:
@@ -65,6 +73,8 @@ class TMQMGStarDataset(InMemoryDataset):
                 os.remove(self.processed_paths[0])
             except FileNotFoundError:
                 pass
+
+        
 
         data, slices = torch.load(self.processed_paths[0], weights_only=False)
         self.data, self.slices = data, slices
@@ -100,6 +110,7 @@ class TMQMGStarDataset(InMemoryDataset):
             if self.pre_transform
             else "none"
         )
+        load_reprs_str =  os.path.basename(self.load_representations) if self.load_representations else 'False'
 
         filename = (
             f"tmqmg_block3-{self.block_3_only}_"
@@ -107,11 +118,9 @@ class TMQMGStarDataset(InMemoryDataset):
             f"num_states-{self.num_states}_"
             f"vis_range-{self.min_lambda}-{self.max_lambda}_"
             f"filter_type-{self.filter_type}_min_f_val{self.min_f_value}_"
-            f"sort_by_max_f-{self.sort_by_max_f}_"
             f"filter_f_value-{self.filter_f_value}_"
-            f"standarize_lambda-{self.standarize_lambda}_"
-            f"standarize_f-{self.standarize_f}_"
             f"lanbda_bucket_size-{self.lambda_bucket_size}_"
+            f"load_representations-{load_reprs_str}_"
             f"pre{pre_transform}.pt"
         )
 
@@ -380,6 +389,10 @@ class TMQMGStarDataset(InMemoryDataset):
             origin_id = None if pd.isna(row["origin_ID"]) else str(row["origin_ID"])
             csd_code = None if pd.isna(row["CSD_code"]) else str(row["CSD_code"])
             kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
+            if self.load_representations:
+                emb = self.precomputed_embedings.get_embedding(csd_code)
+                kwargs['representation'] = emb
+
             transitions = self.filter_data_with_criterion(row,self.filter_type)
             if not transitions:
                 continue

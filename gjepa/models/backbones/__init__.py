@@ -4,6 +4,9 @@ from .gps import GraphGPS
 from .schnet import SchNetEncoder
 from .dimenet import DimeNetEncoder
 from .uma import UMAEncoder
+from .dummy_model import DummyModel
+from .gated_attention_pool import GatedAttentionPoolModel
+from .transformer_attention_pool import TransformerAttentionPoolModel
 
 __all__ = [
     "CustomGNN",
@@ -14,5 +17,8 @@ __all__ = [
     "GraphGPS",
     "SchNetEncoder",
     "DimeNetEncoder",
-    "UMAEncoder"
+    "UMAEncoder",
+    "DummyModel",
+    "GatedAttentionPoolModel",
+    "TransformerAttentionPoolModel",
 ]

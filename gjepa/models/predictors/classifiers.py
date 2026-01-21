@@ -21,24 +21,14 @@ class ClassifierBase(PredictorBase, ABC):
     def predict(self, x: Tensor) -> Tensor:
         return self.logits_to_proba(self(x))
 
-    # def logits_to_proba(self, x: Tensor) -> Tensor:
-    #     if self.out_channels == 1:
-    #         assert x.shape[1] == 1
-    #         return x.sigmoid()
-    #     else:
-    #         assert x.shape[1] > 1
-    #         return x.softmax(dim=1)
     def logits_to_proba(self, x: Tensor) -> Tensor:
-        # Binary / multilabel style tasks → sigmoid
         if self.task_type in ("binary", "multilabel", "binary_multitask"):
             return x.sigmoid()
 
-        # Multiclass (mutually exclusive) → softmax
         elif self.task_type == "multiclass":
             assert x.shape[1] == self.out_channels
             return x.softmax(dim=1)
 
-        # Safety net in case something unexpected slips through
         raise ValueError(f"Unsupported task_type in logits_to_proba: {self.task_type}")
 
 class LinearClassifier(ClassifierBase):
@@ -48,3 +38,4 @@ class LinearClassifier(ClassifierBase):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.linear(x)
+

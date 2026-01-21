@@ -185,13 +185,23 @@ class SupervisedGraphLevelGNN(LightningModule):
 
 
     def _get_pooled_z(self, batch: Data) -> Tensor:
-        z = self.gnn(
-            batch=batch
+        z = self.gnn(batch=batch)
+
+        # UMA returned representation on the GRAPH LEVEL [num_graphs, emebding] when schent returns representation
+        # on the ATOM LEVEL [n.atoms, embeding] with are global_mean_pooled into [num_graphs, emebding]
+        if z.dim() == 2 and z.size(0) == batch.num_graphs:
+            return z
+        if z.dim() == 2 and z.size(0) == batch.num_nodes:
+            return global_mean_pool(z, batch.batch)
+        n_graphs = int(batch.batch.max().item()) + 1
+        if z.dim() == 2 and z.size(0) == n_graphs:
+            return z
+
+        raise RuntimeError(
+            f"Can't pool: z.shape={tuple(z.shape)}, "
+            f"num_nodes={batch.num_nodes}, num_graphs={batch.num_graphs}, "
+            f"batch.batch.shape={tuple(batch.batch.shape)}"
         )
-
-        z = global_mean_pool(z, batch.batch)
-
-        return z
 
     def get_z_y_from_batch(self, batch: Data) -> tuple[Tensor, Tensor]:
         z = self._get_pooled_z(batch)
