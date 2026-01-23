@@ -59,6 +59,8 @@ def pool_over_heads(atom_embeddings: torch.Tensor, method: str = "first_channel"
         return atom_embeddings.max(dim=1).values
     elif method == "first_channel":
         return atom_embeddings[..., 0, :]
+    elif method == "none":
+        return atom_embeddings
     else:
         raise ValueError(f"Unknown pooling method: {method}")
 

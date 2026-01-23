@@ -75,8 +75,10 @@ def generate_embeddings(
                 z = encoder(batch)
 
                 if pool_fn:
-                    # pooling active - reduces [N_total_atoms, Dim] -> [Batch_Size, Dim]
-                    z_pooled = pool_fn(z, batch.batch)
+                    n_atoms, *hidden_dims = z.shape
+                    z_flat = z.view(n_atoms, -1)
+                    z_pooled_flat = pool_fn(z_flat, batch.batch)
+                    z_pooled = z_pooled_flat.view(-1, *hidden_dims)
                     split_embeddings.append(z_pooled.cpu())
                 else:
                     # no pooling - we want per-atom embeddings per molecule

@@ -1,3 +1,3 @@
 gnn_cls: gjepa.models.backbones.UMAEncoder
 predictor_name: uma-s-1p1
-head_pool: first_channel
+head_pool: none
