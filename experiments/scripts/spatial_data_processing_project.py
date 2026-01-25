@@ -193,8 +193,16 @@ def generate_3dmol_html(data_left: Data, label_left: str, data_right: Data, labe
     """
     return html_snippet
 
-def save_dashboard_report(filename: str, title: str, viz_html: str, plot_html: str):
+def save_dashboard_report(filename: str, title: str, viz_html: str, plot_html: str, tsne: bool = True):
     """Combines visualization and plot into a single HTML file."""
+    if tsne:
+        h2 = """
+            <h2>2. Embedding Space Analysis (t-SNE)</h2>
+            <p>Interactive Plot: Hover to see details.</p>
+        """
+    else:
+        h2 = "<h2>2. Cutoff Influence Analysis</h2>"
+
     full_html = f"""
     <!DOCTYPE html>
     <html>
@@ -221,8 +229,7 @@ def save_dashboard_report(filename: str, title: str, viz_html: str, plot_html: s
             </div>
             
             <div class="section">
-                <h2>2. Embedding Space Analysis (t-SNE)</h2>
-                <p>Interactive Plot: Hover to see details.</p>
+                {h2}
                 {plot_html}
             </div>
         </div>
@@ -242,56 +249,6 @@ def save_dashboard_report(filename: str, title: str, viz_html: str, plot_html: s
 
 import torch
 import numpy as np
-
-def rotate_half_molecule(pos: torch.Tensor, angle_deg: float):
-    """
-    Splits molecule along principal axis and rotates one half.
-    Returns:
-        new_pos_tensor: The rotated coordinates.
-        meta: Dict containing 'axis', 'center', 'mask_right' for visualization.
-    """
-    pos_np = pos.cpu().numpy()
-    center = np.mean(pos_np, axis=0)
-    centered_pos = pos_np - center
-    
-    # 1. Find Principal Axis
-    try:
-        # SVD is robust for PCA
-        U, S, Vt = np.linalg.svd(centered_pos)
-        principal_axis = Vt[0] # First principal component
-    except:
-        principal_axis = np.array([1.0, 0.0, 0.0]) # Fallback
-
-    # 2. Identify the "Right" half
-    projections = centered_pos @ principal_axis
-    median_proj = np.median(projections)
-    mask_right = projections > median_proj
-    
-    # 3. Create Rotation Matrix
-    angle_rad = np.radians(angle_deg)
-    # Normalize axis just in case
-    u = principal_axis / (np.linalg.norm(principal_axis) + 1e-6)
-    
-    # Rodrigues' rotation matrix components
-    K = np.array([[0, -u[2], u[1]], [u[2], 0, -u[0]], [-u[1], u[0], 0]])
-    R = np.eye(3) + np.sin(angle_rad) * K + (1 - np.cos(angle_rad)) * (K @ K)
-    
-    # 4. Apply Rotation
-    new_pos = centered_pos.copy()
-    # Rotate only the 'right' atoms
-    new_pos[mask_right] = (centered_pos[mask_right] @ R.T)
-    
-    result_pos = torch.tensor(new_pos + center, dtype=torch.float32)
-    
-    # Return metadata for visualization
-    meta = {
-        'axis': u,
-        'center': center,
-        'mask': mask_right, # Boolean array of which atoms moved
-        'angle': angle_deg
-    }
-    
-    return result_pos, meta
 
 from torch_geometric.nn import radius_graph
 
@@ -377,132 +334,146 @@ def generate_interaction_grid_html(data_list: list, cutoffs: list) -> str:
     html_parts.append('</tbody></table></div>')
     return "".join(html_parts)
 
+import pandas as pd
+import numpy as np
+import torch
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from sklearn.metrics import (
+    mean_squared_error, 
+    mean_absolute_error,
+    precision_score, 
+    recall_score, 
+    f1_score, 
+    roc_auc_score, 
+    average_precision_score
+)
+from tqdm import tqdm
+import random
+
+import torch
+import numpy as np
+from sklearn.metrics import (mean_absolute_error, mean_squared_error, precision_score, 
+                             recall_score, f1_score, roc_auc_score, average_precision_score)
+from sklearn.utils import resample
+
+def get_model_metrics(model, dataloader, device, n_bootstraps=5):
+    """
+    Returns mean and std for MAE, MSE, Precision, Recall, F1, AUROC, AUPRC.
+    Uses bootstrapping to estimate standard deviation.
+    """
+    model.eval()
+    all_y_true = []
+    all_y_prob = []
+    
+    # 1. Collect all predictions
+    with torch.no_grad():
+        for batch in dataloader:
+            batch = batch.to(device)
+            logits = model(batch)
+            probs = model.predictor.logits_to_proba(logits)
+            all_y_true.append(batch.y.cpu())
+            all_y_prob.append(probs.cpu())
+            
+    y_true = torch.cat(all_y_true, dim=0).view(-1).numpy()
+    y_prob = torch.cat(all_y_prob, dim=0).view(-1).numpy()
+    
+    metrics_list = []
+    
+    # 2. Bootstrapping for Std Dev
+    for _ in range(n_bootstraps):
+        # Sample with replacement
+        idx = resample(np.arange(len(y_true)))
+        y_t, y_p = y_true[idx], y_prob[idx]
+        y_b = (y_p > 0.5).astype(int)
+        
+        try:
+            auroc = roc_auc_score(y_t, y_p)
+            auprc = average_precision_score(y_t, y_p)
+        except:
+            auroc, auprc = 0.5, 0.0
+            
+        metrics_list.append({
+            "MAE": mean_absolute_error(y_t, y_p),
+            "MSE": mean_squared_error(y_t, y_p),
+            "Precision": precision_score(y_t, y_b, zero_division=0),
+            "Recall": recall_score(y_t, y_b, zero_division=0),
+            "F1": f1_score(y_t, y_b, zero_division=0),
+            "AUROC": auroc,
+            "AUPRC": auprc
+        })
+    
+    # 3. Aggregate results
+    df_boot = pd.DataFrame(metrics_list)
+    return df_boot.mean().to_dict(), df_boot.std().to_dict()
 
 def exp_4(model, dataloader, device):
-    # --- EXP 4: RECEPTIVE FIELD (Cutoff) Analysis (Full Dataset) ---
     print("\n--- 4. Receptive Field (Cutoff) Analysis ---")
     
-    # 1. Locate Backbone
-    backbone = None
-    if hasattr(model, 'gnn') and hasattr(model.gnn, 'gnn'):
-        backbone = model.gnn.gnn
-    elif hasattr(model, 'encoder'):
-        backbone = model.encoder
+    # Locate Backbone
+    backbone = getattr(model, 'gnn', None)
+    if backbone and hasattr(backbone, 'gnn'): backbone = backbone.gnn
+    elif hasattr(model, 'encoder'): backbone = model.encoder
     
-    if backbone:
-        def update_cutoff_recursive(module, new_cutoff):
-            count = 0
-            if hasattr(module, 'cutoff'):
-                module.cutoff = float(new_cutoff)
-                count += 1
-            if hasattr(module, 'interaction_graph') and hasattr(module.interaction_graph, 'cutoff'):
-                module.interaction_graph.cutoff = float(new_cutoff)
-                count += 1
-            return count
+    if not backbone:
+        print("⚠️ Could not locate SchNet backbone. Skipping."); return
 
-        # Detect original cutoff
-        original_cutoff = 10.0
-        if hasattr(backbone, 'cutoff'): original_cutoff = backbone.cutoff
-        elif hasattr(backbone, 'interaction_graph'): original_cutoff = backbone.interaction_graph.cutoff
+    def update_cutoff(module, val):
+        if hasattr(module, 'cutoff'): module.cutoff = float(val)
+        if hasattr(module, 'interaction_graph'): module.interaction_graph.cutoff = float(val)
+
+    original_cutoff = getattr(backbone, 'cutoff', 10.0)
+    test_cutoffs = [0.5, 1, 2.0, 5, 7.5, 10.0, 15, 30]
+    cutoff_res = []
+
+    for c in test_cutoffs:
+        print(f"   [Testing] Cutoff: {c}Å")
+        update_cutoff(backbone, c)
+        means, stds = get_model_metrics(model, dataloader, device)
         
-        print(f"   [Info] Original Training Cutoff: {original_cutoff}Å")
+        res = {"Cutoff": c}
+        for k in means.keys():
+            res[k] = means[k]
+            res[f"{k}_std"] = stds[k]
+        cutoff_res.append(res)
+            
+    update_cutoff(backbone, original_cutoff) # Restore
+    df = pd.DataFrame(cutoff_res)
+
+    # --- Plotting with Variance Bands ---
+    metric_configs = [
+        ("MAE", 1, 1, "#E74C3C"), ("MSE", 1, 2, "#E74C3C"),
+        ("Precision", 2, 1, "#3498DB"), ("Recall", 2, 2, "#3498DB"),
+        ("F1", 3, 1, "#27AE60"), ("AUPRC", 3, 2, "#F39C12"),
+        ("AUROC", 4, 1, "#8E44AD")
+    ]
+    
+    fig = make_subplots(rows=4, cols=2, subplot_titles=[m[0] for m in metric_configs], vertical_spacing=0.1)
+
+    for m, r, c, color in metric_configs:
+        y_upper = df[m] + df[f"{m}_std"]
+        y_lower = df[m] - df[f"{m}_std"]
         
-        # Ranges to test for ERROR PLOT
-        test_cutoffs = [0.5, 1, 2.0, 5, 7.5, 10.0, 15, 30]
-        cutoff_res = []
-
-        print(f"   [Info] Measuring Error (MAE) for {len(test_cutoffs)} cutoff values...")
-
-        # Collect Truth
-        all_y_true = []
-        for batch in dataloader:
-            all_y_true.append(batch.y.cpu())
-        y_true_tensor = torch.cat(all_y_true, dim=0).view(-1)
-
-        # Loop over cutoffs for Metrics
-        for c in test_cutoffs:
-            update_cutoff_recursive(backbone, c)
-            
-            all_preds = []
-            for batch in tqdm(dataloader, desc=f"Testing Cutoff {c}Å", leave=False):
-                batch = batch.to(device)
-                with torch.no_grad():
-                    logits = model(batch)
-                    probs = model.predictor.logits_to_proba(logits)
-                    all_preds.append(probs.cpu())
-            
-            y_pred_tensor = torch.cat(all_preds, dim=0).view(-1)
-            
-            errors = torch.abs(y_pred_tensor - y_true_tensor)
-            mean_error = errors.mean().item()
-            std_error = errors.std().item()
-            
-            preds_binary = (y_pred_tensor > 0.5).float()
-            accuracy = (preds_binary == y_true_tensor).float().mean().item()
-            
-            cutoff_res.append({
-                "Cutoff": c, 
-                "MeanError": mean_error,
-                "StdError": std_error,
-                "Accuracy": accuracy
-            })
-            
-        # Restore model
-        update_cutoff_recursive(backbone, original_cutoff)
-
-        # --- Plotting Error ---
-        df_cut = pd.DataFrame(cutoff_res)
-        df_cut['Upper'] = (df_cut['MeanError'] + df_cut['StdError']).clip(upper=1.0)
-        df_cut['Lower'] = (df_cut['MeanError'] - df_cut['StdError']).clip(lower=0.0)
-
-        fig = go.Figure()
-        # Error Bands
-        fig.add_trace(go.Scatter(
-            x=df_cut['Cutoff'], y=df_cut['Upper'], mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'
-        ))
-        fig.add_trace(go.Scatter(
-            x=df_cut['Cutoff'], y=df_cut['Lower'], mode='lines', line=dict(width=0), fill='tonexty',
-            fillcolor='rgba(255, 0, 0, 0.1)', name='Error Variability (Std)', hoverinfo='skip'
-        ))
-        # Main Lines
-        fig.add_trace(go.Scatter(
-            x=df_cut["Cutoff"], y=df_cut["MeanError"], mode='lines+markers', name='MAE Error',
-            line=dict(color='firebrick', width=3)
-        ))
-        fig.add_trace(go.Scatter(
-            x=df_cut["Cutoff"], y=df_cut["Accuracy"], mode='lines+markers', name='Accuracy',
-            line=dict(color='green', dash='dot'), yaxis='y2'
-        ))
-
-        fig.update_layout(
-            title="Model Performance vs Interaction Range",
-            xaxis_title="Interaction Cutoff (Å)",
-            yaxis=dict(title="MAE (Lower is Better)", range=[0, 1.0]),
-            yaxis2=dict(title="Accuracy", overlaying='y', side='right', range=[0, 1.0], showgrid=False),
-            template="plotly_white", height=500, hovermode="x unified",
-            annotations=[dict(x=original_cutoff, y=0.05, yref='paper', text="Training Cutoff", showarrow=False, xanchor='left')]
-        )
+        # Std Dev Band
+        fig.add_trace(go.Scatter(x=df['Cutoff'], y=y_lower, mode='lines', line=dict(width=0), showlegend=False), row=r, col=c)
+        fig.add_trace(go.Scatter(x=df['Cutoff'], y=y_upper, mode='lines', line=dict(width=0), fill='tonexty', 
+                                 fillcolor=f"rgba{tuple(list(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.15])}", 
+                                 showlegend=False), row=r, col=c)
+        # Mean Line
+        fig.add_trace(go.Scatter(x=df['Cutoff'], y=df[m], mode='lines+markers', 
+                                 line=dict(color=color, width=3), name=m), row=r, col=c)
         
-        # --- NEW VISUALIZATION LOGIC ---
-        # 1. Grab 3 random molecules from the dataset
-        all_data = []
-        for batch in dataloader:
-            all_data.extend(batch.to_data_list())
-            if len(all_data) > 100: break # Just grab a chunk to sample from
-            
-        viz_samples = random.sample(all_data, min(3, len(all_data)))
+        # Force X-axis to show specific tested cutoff values
+        fig.update_xaxes(tickvals=test_cutoffs, row=r, col=c)
         
-        # 2. Define Visual Cutoffs (Requested by user)
-        viz_cutoffs = [1, 2, 5, 10]
-        
-        # 3. Generate Grid HTML
-        html_rf_viz = generate_interaction_grid_html(viz_samples, viz_cutoffs)
-        
-        save_dashboard_report(OUTPUT_DIR / "report_cutoff.html", "Receptive Field Analysis", html_rf_viz, fig.to_html(full_html=False, include_plotlyjs='cdn'))
-        print("   [Done] Saved to 'report_cutoff.html'")
+        # Add Training Cutoff Line
+        fig.add_vline(x=original_cutoff, line_dash="dash", line_color="#7F8C8D", row=r, col=c)
 
-    else:
-        print("⚠️ Could not locate SchNet backbone. Skipping Exp 4.")
+    fig.update_layout(height=1000, template="plotly_white", title="Impact of Interaction Cutoff on Model Performance")
+    
+    if 'OUTPUT_DIR' in globals():
+        out_path = OUTPUT_DIR / "report_cutoff.html"
+        save_dashboard_report(out_path, "Receptive Field Analysis", "", fig.to_html(full_html=False, include_plotlyjs='cdn'), tsne=False)
 
 import torch
 import numpy as np
@@ -750,34 +721,7 @@ def generate_similarity_boxplot(embedding_dict, title="Stability Analysis"):
         </p>
     </div>
     """
-
-import json
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-from sklearn.manifold import TSNE
-
-import json
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-from sklearn.manifold import TSNE
-import json
 import re
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-from sklearn.manifold import TSNE
-import torch
-
-import json
-import re
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-from sklearn.manifold import TSNE
-import torch
-
 def generate_interactive_tsne(embedding_dict, all_data_list, title):
     """
     Generates a t-SNE plot with embedded JS for 3D visualization.
@@ -870,7 +814,7 @@ def generate_interactive_tsne(embedding_dict, all_data_list, title):
             
             d_clone = data.clone()
             if angle != 0:
-                d_clone.pos, _ = rotate_half_molecule(d_clone.pos, angle)
+                d_clone.pos, _ = rotate_half_molecule(d_clone.pos, angle, d_clone.edge_index)
             
             mol_entry[k] = tensor_to_xyz(d_clone.pos, d_clone.z)
         mol_db[i] = mol_entry
@@ -1087,7 +1031,10 @@ def generate_interactive_tsne(embedding_dict, all_data_list, title):
     
     return ui_html
 
-# --- MAIN EXPERIMENT FUNCTION ---
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 def exp_1(model, dataloader, device, noise_levels=[0.05, 0.2, 1, 2.5]):
     print(f"\n--- 1. Running Perturbation Analysis (Noise: {noise_levels}) ---")
 
@@ -1096,62 +1043,109 @@ def exp_1(model, dataloader, device, noise_levels=[0.05, 0.2, 1, 2.5]):
     for batch in tqdm(dataloader, desc="Loading Full Dataset"):
         all_data_list.extend(batch.to_data_list())
 
-    print(f"   [Info] Analyzing stability for {len(all_data_list)} molecules.")
     if not all_data_list: return
 
-    # 2. Generate Embeddings
-    embeddings = {"Original": []}
-    for nl in noise_levels:
-        embeddings[f"Noise ({nl})"] = []
+    # 2. Collect Metrics & Embeddings
+    # We add 0.0 to the levels to establish a baseline for the metrics plot
+    test_levels = [0.0] + noise_levels
+    labels = ["Original" if nl == 0 else f"Noise ({nl})" for nl in test_levels]
     
-    temp_loader = DataLoader(all_data_list, batch_size=64, shuffle=False)
+    embeddings = {label: [] for label in labels}
+    noise_performance = []
 
-    for batch in tqdm(temp_loader, desc="Generating Embeddings", leave=False):
-        batch = batch.to(device)
+    for nl, label in zip(test_levels, labels):
+        print(f"   [Processing] Noise Level: {nl}Å")
         
-        # Original
+        # Create Noisy Dataset
+        noisy_dataset = []
+        for d in all_data_list:
+            d_n = d.clone()
+            if nl > 0:
+                d_n.pos = d_n.pos + torch.randn_like(d_n.pos) * nl
+            noisy_dataset.append(d_n)
+            
+        temp_loader = DataLoader(noisy_dataset, batch_size=64, shuffle=False)
+
+        # A. Calculate Performance Metrics
+        means, stds = get_model_metrics(model, temp_loader, device)
+        perf_entry = {"Noise": nl}
+        for k in means.keys():
+            perf_entry[k] = means[k]
+            perf_entry[f"{k}_std"] = stds[k]
+        noise_performance.append(perf_entry)
+
+        # B. Calculate Embeddings
         with torch.no_grad():
-            z = model._get_pooled_z(batch)
-            embeddings["Original"].append(z.cpu())
-        
-        # Noise Levels
-        for nl in noise_levels:
-            batch_noisy = batch.clone()
-            batch_noisy.pos = batch_noisy.pos + torch.randn_like(batch_noisy.pos) * nl
-            with torch.no_grad():
-                z_noisy = model._get_pooled_z(batch_noisy)
-                embeddings[f"Noise ({nl})"].append(z_noisy.cpu())
+            for batch in temp_loader:
+                batch = batch.to(device)
+                z = model._get_pooled_z(batch)
+                embeddings[label].append(z.cpu())
 
+    # Finalize embeddings
     for k in embeddings:
         embeddings[k] = torch.cat(embeddings[k], dim=0)
 
-    # 3. Generate Reports
-    # Part A: The 3 Random Molecules Grid (Static HTML)
-    html_grid = generate_3d_grid(all_data_list, noise_levels)
+    # 3. Create Performance Plot (Metrics vs Noise)
+    df_perf = pd.DataFrame(noise_performance)
+    metric_configs = [
+        ("MAE", 1, 1, "#E74C3C"), ("MSE", 1, 2, "#E74C3C"),
+        ("Precision", 2, 1, "#3498DB"), ("Recall", 2, 2, "#3498DB"),
+        ("F1", 3, 1, "#27AE60"), ("AUPRC", 3, 2, "#F39C12"),
+        ("AUROC", 4, 1, "#8E44AD")
+    ]
     
-    # B. Similarity Boxplot (NEW)
-    html_boxplot = generate_similarity_boxplot(embeddings, "Stability Analysis: Cosine Similarity")
+    fig_metrics = make_subplots(rows=4, cols=2, subplot_titles=[m[0] for m in metric_configs], vertical_spacing=0.1)
+    
+    # Extract specific noise levels for tick labeling
+    test_levels = df_perf['Noise'].unique().tolist()
 
-    # C. Interactive t-SNE
-    html_tsne = generate_interactive_tsne(embeddings, all_data_list, f"t-SNE Stability ({len(all_data_list)} Mols)")
+    for m, r, c, color in metric_configs:
+        # Std Dev Bands
+        y_upper = df_perf[m] + df_perf[f"{m}_std"]
+        y_lower = df_perf[m] - df_perf[f"{m}_std"]
+        
+        fig_metrics.add_trace(go.Scatter(x=df_perf['Noise'], y=y_lower, mode='lines', line=dict(width=0), showlegend=False), row=r, col=c)
+        fig_metrics.add_trace(go.Scatter(
+            x=df_perf['Noise'], y=y_upper, mode='lines', line=dict(width=0), 
+            fill='tonexty', fillcolor=f"rgba{tuple(list(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.15])}",
+            showlegend=False), row=r, col=c)
+            
+        # Mean Line
+        fig_metrics.add_trace(go.Scatter(x=df_perf['Noise'], y=df_perf[m], mode='lines+markers', 
+                                         line=dict(color=color, width=3), name=m), row=r, col=c)
+        
+        # Force X-axis to show the specific noise levels tested (0, 0.05, 0.2, etc.)
+        fig_metrics.update_xaxes(tickvals=test_levels, row=r, col=c)
+
+    fig_metrics.update_layout(height=900, template="plotly_white", title="Performance Robustness vs. Positional Noise")
+
+
+    # 4. Generate Reports
+    html_grid = generate_3d_grid(all_data_list, noise_levels)
+    html_boxplot = generate_similarity_boxplot(embeddings, "Stability Analysis: Cosine Similarity")
+    html_tsne = generate_interactive_tsne(embeddings, all_data_list, "t-SNE Stability")
     
-    # Combine into one file
     final_html = f"""
     <html>
     <head>
         <title>Stability Report</title>
         <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     </head>
-    <body style="font-family: sans-serif; padding: 20px;">
+    <body style="font-family: sans-serif; padding: 20px; background: #f8f9fa;">
         <h1>Experiment 1: Stability & Perturbation Analysis</h1>
-        {html_grid}
-        <hr>
-        <h2>Similarity Metrics</h2>
+        
+        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            {html_grid}
+        </div>
+
+        <h2 style="margin-top: 40px;">1. Performance Decay (Noise Sensitivity)</h2>
+        <p>This plot measures how much positional noise (Gaussian jitter) the backbone can tolerate before predictions fail.</p>
+        {fig_metrics.to_html(full_html=False, include_plotlyjs='cdn')}
+        
+        <h2 style="margin-top: 40px;">2. Similarity Metrics</h2>
         {html_boxplot}
-        <hr>
-        <h2>Manifold Analysis</h2>
-        <p>Click on a point to view its reference structure.</p>
+        
+        <h2 style="margin-top: 40px;">3. Manifold Analysis</h2>
         {html_tsne}
     </body>
     </html>
@@ -1163,155 +1157,107 @@ def exp_1(model, dataloader, device, noise_levels=[0.05, 0.2, 1, 2.5]):
 
 from torch_geometric.loader import DataLoader
 
-
-import torch
-import random
-from torch_geometric.loader import DataLoader
-from torch_geometric.data import Batch
-from tqdm import tqdm
-
-import random
-
-# --- Helper to Generate Arc Segments ---
-def get_arc_js(center, axis, radius, angle_deg, color='red'):
-    """
-    Generates 3Dmol.js commands to draw a curved arc representing the angle.
-    """
-    if abs(angle_deg) < 1.0: return ""
-    
-    # 1. Create an orthogonal basis (u, v1, v2)
-    u = axis / np.linalg.norm(axis)
-    # Find an arbitrary vector not parallel to u
-    arb = np.array([1.0, 0.0, 0.0]) if abs(u[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
-    v1 = np.cross(u, arb)
-    v1 = v1 / np.linalg.norm(v1)
-    v2 = np.cross(u, v1)
-    
-    # 2. Generate points along the arc
-    segments = []
-    num_steps = 10
-    rads = np.radians(angle_deg)
-    
-    prev_pt = None
-    
-    # We draw the arc at a slight offset so it doesn't clip through atoms
-    # P(t) = C + R * (cos(t)v1 + sin(t)v2)
-    for i in range(num_steps + 1):
-        t = (i / num_steps) * rads
-        pt = center + radius * (np.cos(t) * v1 + np.sin(t) * v2)
-        
-        if prev_pt is not None:
-            # Create a cylinder from prev_pt to pt
-            start = f"{{x:{prev_pt[0]:.3f}, y:{prev_pt[1]:.3f}, z:{prev_pt[2]:.3f}}}"
-            end   = f"{{x:{pt[0]:.3f}, y:{pt[1]:.3f}, z:{pt[2]:.3f}}}"
-            segments.append(f"viewer.addCylinder({{start:{start}, end:{end}, radius:0.1, color:'{color}'}});")
-        
-        prev_pt = pt
-        
-    return "".join(segments)
 import numpy as np
 import random
 import torch
 
-def get_sector_js(center, axis, radius, angle_deg, target_vec, color='red'):
-    """
-    Generates 3Dmol.js commands to draw a filled sector (pie slice) representing the sweep.
+import numpy as np
+import random
+import uuid
+import torch
+
+# --- Helper: Rodrigues Rotation to get Start Vector ---
+def rotate_vector_by_angle(v, k, theta_deg):
+    """Rotates vector v around axis k by theta degrees using Rodrigues' formula."""
+    theta = np.radians(theta_deg)
+    v = np.array(v)
+    k = np.array(k) / np.linalg.norm(k)
     
-    Args:
-        center (np.array): Origin of rotation.
-        axis (np.array): Axis vector (normalized).
-        radius (float): Radius of the sector.
-        angle_deg (float): Total rotation angle.
-        target_vec (np.array): Vector pointing to the center-of-mass of the rotated atoms.
-                               Used to align the sector with the actual molecule.
+    cross_kv = np.cross(k, v)
+    dot_kv = np.dot(k, v)
+    
+    # Rodrigues' rotation formula
+    v_rot = v * np.cos(theta) + cross_kv * np.sin(theta) + k * dot_kv * (1 - np.cos(theta))
+    return v_rot
+
+import numpy as np
+import random
+import uuid
+import torch
+
+def get_wireframe_wedge_js(center, axis, radius, angle_deg, moved_pos_list):
+    """
+    Generates 3 BOLD wireframe pie-slices (Top, Middle, Bottom).
+    - Arcs are positioned at the very ends of the rotation axis line.
+    - Linewidth is significantly increased for visibility.
     """
     if abs(angle_deg) < 1.0: return ""
     
-    # 1. Coordinate System Setup
-    # We want the sector to end at 'target_vec' (current position)
-    # and start at 'target_vec' rotated by -angle (original position).
+    # 1. Coordinate Basis
+    k = np.array(axis)
+    k = k / (np.linalg.norm(k) + 1e-9)
     
-    # Project target_vec onto the plane perpendicular to axis to get a clean 'U' vector
-    u = target_vec - (np.dot(target_vec, axis) * axis)
-    norm_u = np.linalg.norm(u)
-    if norm_u < 1e-6: return "" # Avoid singular cases
-    u = u / norm_u
+    # Define 'u' (End of sweep / Current Position) relative to molecule mass
+    if len(moved_pos_list) > 0:
+        com = np.mean(moved_pos_list, axis=0)
+        vec = com - center
+        vec_perp = vec - np.dot(vec, k) * k
+        if np.linalg.norm(vec_perp) > 1e-3:
+            u = vec_perp / np.linalg.norm(vec_perp)
+        else:
+            u = np.cross(k, np.array([1., 0., 0.])) if abs(k[0]) < 0.9 else np.cross(k, np.array([0., 1., 0.]))
+            u = u / np.linalg.norm(u)
+    else:
+         u = np.cross(k, np.array([1., 0., 0.])) if abs(k[0]) < 0.9 else np.cross(k, np.array([0., 1., 0.]))
+         u = u / np.linalg.norm(u)
+         
+    v = np.cross(k, u)
     
-    # Calculate 'V' vector (orthogonal to U and Axis)
-    v = np.cross(axis, u)
+    # 2. Dimensions & offsets
+    arc_rad = radius * 1.2
     
-    # 2. Generate Vertices for the Shape
-    # We sweep from -angle to 0 (so 0 is the current position)
-    num_steps = 15
-    rad_total = np.radians(angle_deg)
+    # OFFSETS: 
+    # The blue axis is drawn at +/- 2.5 * radius.
+    # We place arcs at +/- 2.2 * radius to be at the "ends", plus one at 0.0.
+    h_offsets = [radius * 2.2, 0.0, -radius * 2.2]
     
-    vertices = []
-    # Center point is vertex 0
-    vertices.extend(center.tolist()) 
-    
-    arc_points = []
-    
-    for i in range(num_steps + 1):
-        # Interpolate angle from -rad_total to 0
-        theta = -rad_total + (i / num_steps) * rad_total
-        
-        # Point on rim: C + R * (cos(t)U + sin(t)V)
-        # Note: sin/cos logic assumes Right-Hand Rule. 
-        # If angle is positive, we moved counter-clockwise, so origin is at -theta.
-        pt = center + radius * (np.cos(theta) * u + np.sin(theta) * v)
-        
-        vertices.extend(pt.tolist())
-        arc_points.append(pt)
-
-    # 3. Generate Faces (Triangle Fan)
-    # Center is 0. Rim points are 1..N+1
-    faces = []
-    for i in range(num_steps):
-        # Triangle: Center(0) -> Point(i+1) -> Point(i+2)
-        faces.extend([0, i+1, i+2])
-
-    # 4. Construct JS for Filled Area
-    # We use addShape with custom geometry
-    js_shape = f"""
-    viewer.addShape({{
-        vertexArr: {vertices},
-        faceArr: {faces},
-        color: '{color}',
-        alpha: 0.2
-    }});
-    """
-
-    # 5. Construct JS for Borders (Wireframe)
     js_lines = []
+    def vstr(vec): return f"{{x:{vec[0]:.3f}, y:{vec[1]:.3f}, z:{vec[2]:.3f}}}"
     
-    # A. The Spokes (Center to Start, Center to End)
-    def vec_to_dict(v): return f"{{x:{v[0]:.3f}, y:{v[1]:.3f}, z:{v[2]:.3f}}}"
-    
-    c_dict = vec_to_dict(center)
-    start_dict = vec_to_dict(arc_points[0])
-    end_dict = vec_to_dict(arc_points[-1])
-    
-    # Spoke 1
-    js_lines.append(f"viewer.addCylinder({{start:{c_dict}, end:{start_dict}, radius:0.03, color:'{color}'}});")
-    # Spoke 2
-    js_lines.append(f"viewer.addCylinder({{start:{c_dict}, end:{end_dict}, radius:0.03, color:'{color}'}});")
-    
-    # B. The Arc Rim
-    for i in range(len(arc_points) - 1):
-        p1 = vec_to_dict(arc_points[i])
-        p2 = vec_to_dict(arc_points[i+1])
-        js_lines.append(f"viewer.addCylinder({{start:{p1}, end:{p2}, radius:0.05, color:'{color}'}});")
+    # 3. Generate Lines
+    for h in h_offsets:
+        slice_center = center + k * h
+        
+        # A. Spokes (Axis -> Rim)
+        # End Spoke (Current Angle 0)
+        end_pt = slice_center + u * arc_rad
+        js_lines.append(f"viewer.addLine({{start:{vstr(slice_center)}, end:{vstr(end_pt)}, color:'red', linewidth:15}});")
+        
+        # Start Spoke (Original Angle -angle_deg)
+        rad_total = np.radians(float(angle_deg))
+        # Rotate u backwards
+        u_start = u * np.cos(rad_total) - v * np.sin(rad_total) 
+        start_pt = slice_center + u_start * arc_rad
+        
+        js_lines.append(f"viewer.addLine({{start:{vstr(slice_center)}, end:{vstr(start_pt)}, color:'red', linewidth:15, opacity:0.6}});")
+        
+        # B. Bold Arc
+        steps = 15
+        prev_pt = start_pt
+        
+        for i in range(1, steps + 1):
+            frac = i / steps
+            ang_curr = -rad_total + (frac * rad_total)
+            d_curr = u * np.cos(ang_curr) + v * np.sin(ang_curr)
+            curr_pt = slice_center + d_curr * arc_rad
+            
+            # Linewidth 20 for the main arc to make it very bold
+            js_lines.append(f"viewer.addLine({{start:{vstr(prev_pt)}, end:{vstr(curr_pt)}, color:'red', linewidth:20}});")
+            prev_pt = curr_pt
 
-    return js_shape + "".join(js_lines)
+    return "\n".join(js_lines)
 
 def generate_3d_grid_rotation(molecule_list, angles):
-    """
-    Creates an HTML Grid visualizing torsional twists.
-    Features:
-    - Atom Coloring (Static vs Moved)
-    - Axis Visualization (Blue Line)
-    - Sweep Visualization (Filled Red Sector)
-    """
     if not molecule_list: return ""
     
     indices = random.sample(range(len(molecule_list)), min(3, len(molecule_list)))
@@ -1319,11 +1265,10 @@ def generate_3d_grid_rotation(molecule_list, angles):
     html_parts = []
     html_parts.append('''
     <div style="font-family: sans-serif; margin-bottom: 30px;">
-        <h3>Visual Torsion Check (3 Random Samples)</h3>
+        <h3>Visual Torsion Check (Bold Wireframe)</h3>
         <p style="font-size: 0.9em; color: #666;">
-            <span style="color:orange; font-weight:bold;">Orange:</span> Rotated Half | 
-            <span style="color:gray; font-weight:bold;">Gray:</span> Static Half | 
-            <span style="color:red; font-weight:bold; opacity: 0.5;">Red Sector:</span> Rotation Sweep
+            <b>Blue Line:</b> Rotation Axis | 
+            <b>Red Indicators:</b> Angle Sweep (Top, Middle, Bottom)
         </p>
         <table style="width:100%; text-align: center; border-collapse: collapse;">
             <thead>
@@ -1340,65 +1285,53 @@ def generate_3d_grid_rotation(molecule_list, angles):
         mol_orig = molecule_list[idx]
         html_parts.append(f'<tr><td style="font-weight:bold;">#{idx}</td>')
         
-        # Calculate visualization radius
-        mol_radius = np.max(np.linalg.norm(mol_orig.pos.cpu().numpy() - np.mean(mol_orig.pos.cpu().numpy(), axis=0), axis=1))
-        
+        # Calculate radius
+        pos_np = mol_orig.pos.cpu().numpy()
+        center_mol = np.mean(pos_np, axis=0)
+        mol_radius = np.max(np.linalg.norm(pos_np - center_mol, axis=1))
+
         for ang in angles:
             mol_view = mol_orig.clone()
             
-            # --- 1. PERFORM ROTATION & GET METADATA ---
-            mol_view.pos, meta = rotate_half_molecule(mol_view.pos, float(ang))
+            # --- 1. ROTATE ---
+            mol_view.pos, meta = rotate_half_molecule(mol_view.pos, float(ang), mol_view.edge_index)
             
             xyz_str = get_xyz_string(mol_view) 
-            div_id = f"mol_{idx}_rot_{ang}".replace('.', '_').replace('-', 'n')
-            
-            # --- 2. CALCULATE GEOMETRY FOR SECTOR ---
-            # We need a vector pointing to the "mass" that moved, so we can align the sector
-            # Find center of mass of the 'moved' atoms
+            div_id = f"mol_{idx}_{uuid.uuid4().hex}"
+
+            # --- 2. GENERATE VISUALS ---
+            center = meta['center']
+            axis = meta['axis']
             moved_pos = mol_view.pos.cpu().numpy()[meta['mask']]
-            if len(moved_pos) > 0:
-                com_moved = np.mean(moved_pos, axis=0)
-                # Vector from rotation center to COM of moved part
-                target_vec = com_moved - meta['center']
-            else:
-                target_vec = np.array([1.0, 0.0, 0.0]) # Fallback
-
-            # --- 3. GENERATE VISUALS ---
-            # A. Rotation Axis (Blue Line)
-            ax_start_np = meta['center'] - meta['axis'] * (mol_radius * 1.5)
-            ax_end_np   = meta['center'] + meta['axis'] * (mol_radius * 1.5)
+            div_id = f"mol_{idx}_orig"
             
-            # Helper for formatting
-            def fmt(v): return f"{{x:{v[0]:.3f}, y:{v[1]:.3f}, z:{v[2]:.3f}}}"
-
-            js_axis = f"viewer.addCylinder({{start:{fmt(ax_start_np)}, end:{fmt(ax_end_np)}, radius:0.04, color:'blue', opacity: 0.5}});"
+            # Axis Line (Blue) - Length 2.5x radius to encompass the arcs
+            ax_start = center - axis * (mol_radius * 2.5)
+            ax_end   = center + axis * (mol_radius * 2.5)
+            def vstr(v): return f"{{x:{v[0]:.3f},y:{v[1]:.3f},z:{v[2]:.3f}}}"
             
-            # B. The Filled Sector (Red Area)
-            # We use a slightly larger radius than the molecule so it encompasses it
-            js_sector = get_sector_js(meta['center'], meta['axis'], mol_radius * 1.1, ang, target_vec, color='red')
+            js_axis = f"viewer.addLine({{start:{vstr(ax_start)}, end:{vstr(ax_end)}, color:'blue', linewidth:8}});"
             
-            # C. Atom Coloring
-            moved_indices = np.where(meta['mask'])[0].tolist()
-            static_indices = np.where(~meta['mask'])[0].tolist()
+            # Red Arcs
+            js_arcs = get_wireframe_wedge_js(center, axis, mol_radius, float(ang), moved_pos)
             
             html_parts.append(f'''
                 <td style="border: 1px solid #ddd; padding: 5px;">
                     <div id="{div_id}" style="height: 200px; width: 200px; position: relative;"></div>
                     <script>
-                        var viewer = $3Dmol.createViewer(document.getElementById("{div_id}"), {{backgroundColor: "white"}});
-                        viewer.addModel(`{xyz_str}`, "xyz");
-                        
-                        // Static Half (Gray)
-                        viewer.setStyle({{serial: {static_indices}}}, {{stick: {{color: '#dddddd', radius: 0.15}}, sphere: {{scale: 0.3, color: '#dddddd'}}}});
-                        
-                        // Rotated Half (Jmol Colors)
-                        viewer.setStyle({{serial: {moved_indices}}}, {{stick: {{colorscheme: 'Jmol'}}, sphere: {{scale: 0.3, colorscheme: 'Jmol'}} }});
-                        
-                        {js_axis}
-                        {js_sector}
+                        (function() {{
+                            let element = document.getElementById("{div_id}");
+                            let viewer = $3Dmol.createViewer(element, {{backgroundColor: "white"}});
+                            
+                            viewer.addModel(`{xyz_str}`, "xyz");
+                            viewer.setStyle({{}}, {{stick: {{radius: 0.15}}, sphere: {{scale: 0.3}}}});
+                            
+                            {js_axis}
+                            {js_arcs}
 
-                        viewer.zoomTo();
-                        viewer.render();
+                            viewer.zoomTo();
+                            viewer.render();
+                        }})();
                     </script>
                 </td>
             ''')
@@ -1409,104 +1342,200 @@ def generate_3d_grid_rotation(molecule_list, angles):
     return "".join(html_parts)
 
 # --- MAIN EXPERIMENT FUNCTION ---
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+import torch
+import numpy as np
+from torch_geometric.utils import to_undirected
+
+def rotate_half_molecule(pos: torch.Tensor, angle_deg: float, edge_index: torch.Tensor = None):
+    """
+    Chemically valid rotation:
+    1. Finds a central bond.
+    2. BFS to find all atoms in the 'moving' branch.
+    3. Rotates branch around the bond axis (preserving bond lengths).
+    """
+    if angle_deg == 0:
+        return pos, {'axis': np.array([1,0,0]), 'center': pos.mean(0).cpu().numpy(), 'mask': np.zeros(pos.shape[0], dtype=bool)}
+
+    pos_np = pos.cpu().numpy()
+    num_nodes = pos_np.shape[0]
+    
+    # --- 1. Identify a Rotation Axis (A Central Bond) ---
+    # If no edge_index provided, we fallback to the old spatial method 
+    # (but for SchNet, you definitely have edge_index!)
+    if edge_index is None:
+        # Fallback to spatial split if edges aren't available
+        # (Included for safety, but try to pass edge_index)
+        return _spatial_fallback(pos, angle_deg)
+
+    # Find a bond near the center of the molecule to rotate
+    center_mol = np.mean(pos_np, axis=0)
+    u_idx, v_idx = edge_index[0].cpu().numpy(), edge_index[1].cpu().numpy()
+    
+    # Midpoints of all bonds
+    midpoints = (pos_np[u_idx] + pos_np[v_idx]) / 2
+    dists = np.linalg.norm(midpoints - center_mol, axis=1)
+    
+    # Pick the most 'central' bond
+    best_bond_idx = np.argmin(dists)
+    node_a, node_b = u_idx[best_bond_idx], v_idx[best_bond_idx]
+    
+    # --- 2. BFS: Find the moving branch ---
+    # We want to find all atoms connected to node_b without going through node_a
+    adj = [[] for _ in range(num_nodes)]
+    for i in range(len(u_idx)):
+        # Skip the bond we are rotating around to "break" the graph into two
+        if (u_idx[i] == node_a and v_idx[i] == node_b) or (u_idx[i] == node_b and v_idx[i] == node_a):
+            continue
+        adj[u_idx[i]].append(v_idx[i])
+        
+    moving_nodes = set()
+    queue = [node_b]
+    visited = {node_a, node_b}
+    while queue:
+        curr = queue.pop(0)
+        moving_nodes.add(curr)
+        for neighbor in adj[curr]:
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)
+    
+    mask_moving = np.zeros(num_nodes, dtype=bool)
+    for idx in moving_nodes: mask_moving[idx] = True
+
+    # --- 3. Apply Rodrigues Rotation ---
+    axis = pos_np[node_b] - pos_np[node_a]
+    axis = axis / (np.linalg.norm(axis) + 1e-9)
+    center = pos_np[node_a]
+    
+    angle_rad = np.radians(angle_deg)
+    K = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+    R = np.eye(3) + np.sin(angle_rad) * K + (1 - np.cos(angle_rad)) * (K @ K)
+    
+    new_pos = pos_np.copy()
+    # Rotate only the nodes in the branch
+    branch_coords = pos_np[mask_moving] - center
+    new_pos[mask_moving] = (branch_coords @ R.T) + center
+    
+    meta = {
+        'axis': axis,
+        'center': center,
+        'mask': mask_moving,
+        'angle': angle_deg
+    }
+    
+    return torch.tensor(new_pos, dtype=torch.float32), meta
+
 def exp_2(model, dataloader, device, twist_angles=[0, 5, 15, 45, 90, 135, 180]):
-    """
-    Experiment 2: Rotation/Torsion Analysis (Full Dataset)
-    Filters for large molecules (>15 atoms) and compares embeddings across multiple twist angles.
-    """
     print(f"\n--- 2. Running Rotation Analysis (Angles: {twist_angles}) ---")
     
-    # 1. Collect Suitable Molecules (Scan full dataset)
+    # 1. Collect Suitable Molecules
     large_molecules = []
-    
-    # We scan everything but only keep the ones we can actually twist
-    # Note: We keep them on CPU initially to avoid OOM
     for batch in tqdm(dataloader, desc="Scanning for large molecules"):
         data_list = batch.to_data_list()
         for d in data_list:
             if d.num_nodes > 15: 
                 large_molecules.append(d)
                 
-    print(f"   [Info] Found {len(large_molecules)} molecules suitable for twisting (>15 atoms).")
-    
     if not large_molecules:
-        print("   [Skip] No suitable molecules found.")
-        return
+        print("   [Skip] No suitable molecules found."); return
 
-    # 2. Generate Embeddings for ALL angles
-    # Prepare keys: 0 -> "Original", Others -> "Twist (X°)"
-    keys = []
-    for ang in twist_angles:
-        if ang == 0: keys.append("Original")
-        else: keys.append(f"Twist ({ang}°)")
-            
+    # 2. Collect Metrics & Embeddings for each angle
+    keys = ["Original" if a == 0 else f"Twist ({a}°)" for a in twist_angles]
     embeddings = {k: [] for k in keys}
-    
-    # Process in mini-batches
-    temp_loader = DataLoader(large_molecules, batch_size=64, shuffle=False)
-    
-    for batch in tqdm(temp_loader, desc="Twisting & Embedding", leave=False):
-        batch = batch.to(device)
+    rotation_performance = []
+
+    for ang, label in zip(twist_angles, keys):
+        print(f"   [Processing] Angle: {ang}°")
+
+        twisted_dataset = []
+        for d in tqdm(large_molecules, desc=f"Twisting {ang}°", leave=False):
+            d_t = d.clone()
+            # Perform BFS rotation on the individual molecule
+            new_pos, _ = rotate_half_molecule(d_t.pos, float(ang), d_t.edge_index)
+            d_t.pos = new_pos.to(device)
+            twisted_dataset.append(d_t)
+
+        # Create temp loader for metric evaluation
+        temp_loader = DataLoader(twisted_dataset, batch_size=64, shuffle=False)
         
-        # Loop through each requested angle
-        for ang in twist_angles:
-            label = "Original" if ang == 0 else f"Twist ({ang}°)"
-            
-            if ang == 0:
-                batch_to_infer = batch
-            else:
-                # Create twisted batch dynamically
-                batch_twisted_list = []
-                # Deconstruct batch to rotate individual molecules
-                for d in batch.to_data_list():
-                    d_t = d.clone()
-                    d_t.pos = rotate_half_molecule(d_t.pos, float(ang))[0].to(device)
-                    batch_twisted_list.append(d_t)
-                
-                # Re-batch
-                batch_to_infer = Batch.from_data_list(batch_twisted_list).to(device)
-            
-            # Inference
-            with torch.no_grad():
-                z = model._get_pooled_z(batch_to_infer)
+        # A. Get Metrics (Performance Impact)
+        means, stds = get_model_metrics(model, temp_loader, device)
+        perf_entry = {"Angle": ang}
+        for k in means.keys():
+            perf_entry[k] = means[k]
+            perf_entry[f"{k}_std"] = stds[k]
+        rotation_performance.append(perf_entry)
+        
+        # B. Get Embeddings (Similarity/t-SNE)
+        with torch.no_grad():
+            for batch in temp_loader:
+                batch = batch.to(device)
+                z = model._get_pooled_z(batch)
                 embeddings[label].append(z.cpu())
 
-    # Concatenate lists into single Tensors
+    # Finalize embeddings
     for k in embeddings:
         embeddings[k] = torch.cat(embeddings[k], dim=0)
 
-    # 3. Generate Reports
+    # 3. Create Performance Plot (Metrics vs Angle)
+    df_perf = pd.DataFrame(rotation_performance)
+    metric_configs = [
+        ("MAE", 1, 1, "#E74C3C"), ("MSE", 1, 2, "#E74C3C"),
+        ("Precision", 2, 1, "#3498DB"), ("Recall", 2, 2, "#3498DB"),
+        ("F1", 3, 1, "#27AE60"), ("AUPRC", 3, 2, "#F39C12"),
+        ("AUROC", 4, 1, "#8E44AD")
+    ]
     
-    # A. Static Visual Grid (3 Random Molecules x All Angles)
+    fig_metrics = make_subplots(rows=4, cols=2, subplot_titles=[m[0] for m in metric_configs], vertical_spacing=0.1)
+    for m, r, c, color in metric_configs:
+        y_upper = df_perf[m] + df_perf[f"{m}_std"]
+        y_lower = df_perf[m] - df_perf[f"{m}_std"]
+        
+        # Std Dev Band
+        fig_metrics.add_trace(go.Scatter(x=df_perf['Angle'], y=y_lower, mode='lines', line=dict(width=0), showlegend=False), row=r, col=c)
+        fig_metrics.add_trace(go.Scatter(x=df_perf['Angle'], y=y_upper, mode='lines', line=dict(width=0), fill='tonexty', 
+                                         fillcolor=f"rgba{tuple(list(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.15])}", 
+                                         showlegend=False), row=r, col=c)
+        # Mean Line
+        fig_metrics.add_trace(go.Scatter(x=df_perf['Angle'], y=df_perf[m], mode='lines+markers', 
+                                         line=dict(color=color, width=3), name=m), row=r, col=c)
+        
+        # Force X-axis to show specific tested angles
+        fig_metrics.update_xaxes(tickvals=twist_angles, row=r, col=c)
+
+    fig_metrics.update_layout(height=900, template="plotly_white", title="Downstream Performance vs. Twist Angle")
+
+
+    # 4. Generate Other Report Components
     html_grid = generate_3d_grid_rotation(large_molecules, twist_angles)
+    html_boxplot = generate_similarity_boxplot(embeddings, "Cosine Similarity to Original Structure")
+    html_tsne = generate_interactive_tsne(embeddings, large_molecules, "t-SNE Manifold Shift")
 
-    # B. Similarity Boxplot (NEW)
-    html_boxplot = generate_similarity_boxplot(embeddings, "Torsional Sensitivity: Cosine Similarity")
-
-    # C. Interactive t-SNE
-    html_tsne = generate_interactive_tsne(
-        embeddings, 
-        large_molecules, 
-        f"t-SNE: Torsional Sensitivity ({len(large_molecules)} Molecules)"
-    )
-    
+    # 5. Save Final Report
     final_html = f"""
     <html>
     <head>
         <title>Rotation Analysis Report</title>
         <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     </head>
-    <body style="font-family: sans-serif; padding: 20px;">
+    <body style="font-family: sans-serif; padding: 20px; background: #f8f9fa;">
         <h1>Experiment 2: Rotation & Torsion Analysis</h1>
-        <p>Subset: {len(large_molecules)} molecules with > 15 atoms.</p>
-        {html_grid}
-        <hr>
-        <h2>Similarity Metrics</h2>
+        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            {html_grid}
+        </div>
+        
+        <h2 style="margin-top: 40px;">1. Performance Decay Metrics</h2>
+        <p>This plot shows how the downstream linear head performs as the backbone embeddings are perturbed by torsion.</p>
+        {fig_metrics.to_html(full_html=False, include_plotlyjs='cdn')}
+        
+        <h2 style="margin-top: 40px;">2. Embedding Similarity</h2>
         {html_boxplot}
-        <hr>
-        <h2>Manifold Analysis</h2>
-        <p>Click on a point to view its reference structure and highlight its rotation trajectory.</p>
+        
+        <h2 style="margin-top: 40px;">3. Manifold Trajectory (t-SNE)</h2>
         {html_tsne}
     </body>
     </html>
@@ -1514,7 +1543,117 @@ def exp_2(model, dataloader, device, twist_angles=[0, 5, 15, 45, 90, 135, 180]):
     
     with open(OUTPUT_DIR / "report_rotation.html", "w") as f:
         f.write(final_html)
-    print("   [Done] Saved to 'report_rotation.html'")
+    print(f"   [Done] Saved to report_rotation.html")
+
+def rotate_entire_molecule(pos: torch.Tensor, angle_deg: float):
+    """
+    Rotates the entire molecule as a rigid body.
+    Since SchNet is distance-based, this should NOT change embeddings.
+    """
+    if angle_deg == 0:
+        return pos
+    
+    pos_np = pos.cpu().numpy()
+    center = np.mean(pos_np, axis=0)
+    
+    # Use a fixed random axis (e.g., [1, 1, 0] normalized) for consistent testing
+    axis = np.array([1.0, 1.0, 0.0])
+    axis = axis / np.linalg.norm(axis)
+    
+    angle_rad = np.radians(angle_deg)
+    K = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+    R = np.eye(3) + np.sin(angle_rad) * K + (1 - np.cos(angle_rad)) * (K @ K)
+    
+    new_pos = ((pos_np - center) @ R.T) + center
+    return torch.tensor(new_pos, dtype=torch.float32)
+
+def exp_3(model, dataloader, device, rotation_angles=[0, 45, 90, 135, 180]):
+    print(f"\n--- 3. Running Global Rotation Analysis (Angles: {rotation_angles}) ---")
+    
+    # 1. Collect Data (Rigid rotation works for any size, but we'll use a subset for speed)
+    all_data = []
+    for batch in tqdm(dataloader, desc="Loading Dataset"):
+        all_data.extend(batch.to_data_list())
+        if len(all_data) >= 200: break # Sufficient for sanity check
+
+    # 2. Collect Metrics & Embeddings
+    keys = ["Original" if a == 0 else f"Rot ({a}°)" for a in rotation_angles]
+    embeddings = {k: [] for k in keys}
+    perf_results = []
+
+    for ang, label in zip(rotation_angles, keys):
+        print(f"   [Processing] Rotation: {ang}°")
+        
+        rotated_list = []
+        for d in all_data:
+            d_r = d.clone()
+            d_r.pos = rotate_entire_molecule(d_r.pos, float(ang)).to(device)
+            rotated_list.append(d_r)
+        
+        temp_loader = DataLoader(rotated_list, batch_size=64, shuffle=False)
+        
+        # A. Performance Metrics
+        means, stds = get_model_metrics(model, temp_loader, device)
+        entry = {"Angle": ang}
+        for k in means.keys():
+            entry[k], entry[f"{k}_std"] = means[k], stds[k]
+        perf_results.append(entry)
+        
+        # B. Embeddings
+        with torch.no_grad():
+            for batch in temp_loader:
+                batch = batch.to(device)
+                z = model._get_pooled_z(batch)
+                embeddings[label].append(z.cpu())
+
+    for k in embeddings:
+        embeddings[k] = torch.cat(embeddings[k], dim=0)
+
+    # 3. Create Performance Plot (Should be FLAT)
+    df_perf = pd.DataFrame(perf_results)
+    metric_configs = [
+        ("MAE", 1, 1, "#E74C3C"), ("MSE", 1, 2, "#E74C3C"),
+        ("Precision", 2, 1, "#3498DB"), ("Recall", 2, 2, "#3498DB"),
+        ("F1", 3, 1, "#27AE60"), ("AUPRC", 3, 2, "#F39C12"),
+        ("AUROC", 4, 1, "#8E44AD")
+    ]
+    
+    fig_metrics = make_subplots(rows=4, cols=2, subplot_titles=[m[0] for m in metric_configs], vertical_spacing=0.1)
+    for m, r, c, color in metric_configs:
+        fig_metrics.add_trace(go.Scatter(x=df_perf['Angle'], y=df_perf[m], mode='lines+markers', 
+                                         line=dict(color=color, width=3), name=m), row=r, col=c)
+        fig_metrics.update_xaxes(tickvals=rotation_angles, row=r, col=c)
+
+    fig_metrics.update_layout(height=900, template="plotly_white", title="Invariance Check: Performance vs. Global Rotation")
+
+    # 4. Generate Visual Components
+    # Re-using your existing rotation grid/tsne helper logic
+    html_grid = generate_3d_grid_rotation(all_data[:3], rotation_angles) 
+    html_boxplot = generate_similarity_boxplot(embeddings, "Invariance Analysis: Cosine Similarity (Expect 1.0)")
+    html_tsne = generate_interactive_tsne(embeddings, all_data, "t-SNE Invariance (Points should overlap)")
+
+    # 5. Save Report
+    final_html = f"""
+    <html>
+    <head><title>Global Rotation Analysis</title><script src="https://3Dmol.org/build/3Dmol-min.js"></script></head>
+    <body style="font-family: sans-serif; padding: 20px; background: #f8f9fa;">
+        <h1>Experiment 3: Global Rotation Invariance Analysis</h1>
+        <p>This experiment rotates the <b>entire</b> molecule. Since SchNet uses interatomic distances, performance should remain constant.</p>
+        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">{html_grid}</div>
+        <h2 style="margin-top: 40px;">1. Invariance Metrics (Expect Flat Lines)</h2>
+        {fig_metrics.to_html(full_html=False, include_plotlyjs='cdn')}
+        <h2 style="margin-top: 40px;">2. Similarity Boxplot (Expect ~1.0)</h2>
+        {html_boxplot}
+        <h2 style="margin-top: 40px;">3. Manifold Overlap</h2>
+        {html_tsne}
+    </body>
+    </html>
+    """
+    
+    out_path = OUTPUT_DIR / "report_full_rotation.html"
+    with open(out_path, "w") as f:
+        f.write(final_html)
+    print(f"   [Done] Saved to {out_path}")
 
 def run_spatial_analysis(model, datamodule):
     print("\n" + "="*50)
@@ -1527,7 +1666,7 @@ def run_spatial_analysis(model, datamodule):
     analyze_neighbor_grid(dataloader)
     analyze_distance_distribution(dataloader)
 
-    for exp in [exp_1, exp_2, exp_4]:
+    for exp in [exp_1, exp_2, exp_3, exp_4]:
         exp(
             model, dataloader, device
         )
@@ -1542,6 +1681,9 @@ import shutil
 
 SPATIAL_CKPT_PATH = Path("data/spatial_data_project/best_model.ckpt")
 SPATIAL_CKPT_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+# @TODO: for rotation rotate BFS/DFS arm of connected atoms and not juts any individual atoms
+#   - check if position perturbations are correct
 
 @hydra.main(version_base="1.3", config_path="../../config", config_name="config")
 def main(cfg: DictConfig) -> None:
