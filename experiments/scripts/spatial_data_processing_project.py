@@ -252,7 +252,7 @@ import numpy as np
 
 from torch_geometric.nn import radius_graph
 
-def generate_interaction_grid_html(data_list: list, cutoffs: list) -> str:
+def generate_interaction_grid_html(data_list: list, cutoffs: list, max_num_neighbors: int = 64) -> str:
     """
     Visualizes the RECEPTIVE FIELD (Interaction Graph) in a Grid.
     Rows: Molecules
@@ -287,7 +287,7 @@ def generate_interaction_grid_html(data_list: list, cutoffs: list) -> str:
         # 3. Iterate Cutoffs (Cols)
         for c in cutoffs:
             # Generate Edge List for this specific (Molecule + Cutoff) combo
-            edge_index = radius_graph(data.pos, r=c, max_num_neighbors=100)
+            edge_index = radius_graph(data.pos, r=c, max_num_neighbors=max_num_neighbors)
             edges = edge_index.T.cpu().numpy()
             
             # Build JS commands to draw cylinders
@@ -492,7 +492,7 @@ def exp_4(model, dataloader, device):
     viz_samples = random.sample(all_data, min(3, len(all_data)))
     
     # 2. Define Visual Cutoffs
-    viz_cutoffs = [1, 2, 5, 10]
+    viz_cutoffs = [1, 2, 5, 10, 15]
     
     # 3. Generate Grid HTML (Assuming generate_interaction_grid_html is defined elsewhere)
     # Note: Ensure generate_interaction_grid_html is available in scope
@@ -607,10 +607,10 @@ def get_xyz_string(data):
     return "\n".join(lines)
 
 # --- HELPER: 3D Grid Visualization ---
-def generate_3d_grid(all_data_list, noise_levels):
+def generate_3d_grid(all_data_list, noise_levels, cutoff=10.0, max_num_neighbors=64):
     """
-    Selects 3 random molecules and creates an HTML Grid:
-    Rows = Molecules, Cols = Noise Levels.
+    Visualizes stability: Rows = Molecules, Cols = Noise Levels.
+    ADDS: Blue cylinders for interaction edges (cutoff) to show topology changes.
     """
     if not all_data_list: return ""
     
@@ -618,57 +618,109 @@ def generate_3d_grid(all_data_list, noise_levels):
     indices = random.sample(range(len(all_data_list)), min(3, len(all_data_list)))
     
     html_parts = []
-    html_parts.append('''
+    html_parts.append(f'''
     <div style="font-family: sans-serif; margin-bottom: 30px;">
-        <h3>Visual Stability Check (3 Random Samples)</h3>
+        <h3>Visual Stability & Topology Check</h3>
+        <p style="font-size: 0.9em; color: #666;">
+            <b>Cutoff:</b> {cutoff} Å | 
+            <b>Blue Cylinders:</b> Interactions found by the GNN. 
+            Notice how noise changes the graph connectivity.
+        </p>
         <table style="width:100%; text-align: center; border-collapse: collapse;">
             <thead>
                 <tr>
                     <th>Molecule ID</th>
-                    <th>Original</th>
+                    <th>Original (0.0)</th>
     ''')
     
     for nl in noise_levels:
         html_parts.append(f'<th>Noise {nl}</th>')
     html_parts.append('</tr></thead><tbody>')
 
+    # --- HELPER TO GEN JS FOR EDGES ---
+    def get_edge_js(pos_tensor):
+        # 1. Calculate Edges on the fly using the current positions
+        edge_index = radius_graph(pos_tensor, r=cutoff, max_num_neighbors=max_num_neighbors)
+        edges = edge_index.T.cpu().numpy()
+        pos_np = pos_tensor.cpu().numpy()
+        
+        js_cmds = []
+        for i, j in edges:
+            if i < j: # Unique undirected edges
+                start = f"{{x:{pos_np[i][0]:.3f}, y:{pos_np[i][1]:.3f}, z:{pos_np[i][2]:.3f}}}"
+                end   = f"{{x:{pos_np[j][0]:.3f}, y:{pos_np[j][1]:.3f}, z:{pos_np[j][2]:.3f}}}"
+                js_cmds.append(
+                    f"viewer.addCylinder({{start: {start}, end: {end}, radius: 0.05, color: 'blue', opacity: 0.4}});"
+                )
+        return "".join(js_cmds), len(edges)//2
+
     # Loop through selected molecules
     for idx in indices:
         mol_orig = all_data_list[idx]
         html_parts.append(f'<tr><td style="font-weight:bold;">#{idx}</td>')
         
-        # 1. Original Cell
-        xyz_orig = get_xyz_string(mol_orig)
-        div_id = f"mol_{idx}_orig"
+        # --- 1. Original Cell ---
+        xyz_orig = get_xyz_string(mol_orig) # Assuming helper exists
+        js_edges_orig, num_edges_orig = get_edge_js(mol_orig.pos)
+        
+        div_id = f"mol_{idx}_orig_{np.random.randint(1e6)}"
         html_parts.append(f'''
             <td style="border: 1px solid #ddd; padding: 5px;">
-                <div id="{div_id}" style="height: 200px; width: 200px; position: relative;"></div>
+                <div style="position: relative;">
+                    <div id="{div_id}" style="height: 200px; width: 200px;"></div>
+                    <div style="position: absolute; top: 2px; left: 2px; background: rgba(255,255,255,0.8); font-size: 0.7em; padding: 2px;">
+                        {num_edges_orig} Edges
+                    </div>
+                </div>
                 <script>
-                    var viewer = $3Dmol.createViewer(document.getElementById("{div_id}"), {{backgroundColor: "white"}});
-                    viewer.addModel(`{xyz_orig}`, "xyz");
-                    viewer.setStyle({{stick: {{}}, sphere: {{scale: 0.3}}}});
-                    viewer.zoomTo();
-                    viewer.render();
+                    (function() {{
+                        let viewer = $3Dmol.createViewer(document.getElementById("{div_id}"), {{backgroundColor: "white"}});
+                        viewer.addModel(`{xyz_orig}`, "xyz");
+                        viewer.setStyle({{stick: {{radius: 0.1}}, sphere: {{scale: 0.3}}}});
+                        {js_edges_orig}
+                        viewer.zoomTo();
+                        viewer.render();
+                    }})();
                 </script>
             </td>
         ''')
         
-        # 2. Noisy Cells
+        # --- 2. Noisy Cells ---
         for nl in noise_levels:
             mol_noisy = mol_orig.clone()
-            mol_noisy.pos = mol_noisy.pos + torch.randn_like(mol_noisy.pos) * nl
+            
+            # Apply Noise (Deterministic for consistent rendering)
+            torch.manual_seed(42 + idx) 
+            noise_vec = torch.randn_like(mol_noisy.pos) * nl
+            mol_noisy.pos = mol_noisy.pos + noise_vec
+            
             xyz_noisy = get_xyz_string(mol_noisy)
-            div_id = f"mol_{idx}_noise_{nl}".replace('.', '_')
+            
+            # Calculate Edges for the NOISY positions
+            js_edges_noisy, num_edges_noisy = get_edge_js(mol_noisy.pos)
+            
+            div_id = f"mol_{idx}_noise_{str(nl).replace('.','_')}_{np.random.randint(1e6)}"
+            
+            # Color code edge count: Red if different from original
+            count_color = "black" if num_edges_noisy == num_edges_orig else "red"
             
             html_parts.append(f'''
                 <td style="border: 1px solid #ddd; padding: 5px;">
-                    <div id="{div_id}" style="height: 200px; width: 200px; position: relative;"></div>
+                    <div style="position: relative;">
+                        <div id="{div_id}" style="height: 200px; width: 200px;"></div>
+                        <div style="position: absolute; top: 2px; left: 2px; background: rgba(255,255,255,0.8); font-size: 0.7em; padding: 2px; color: {count_color}; font-weight: bold;">
+                            {num_edges_noisy} Edges
+                        </div>
+                    </div>
                     <script>
-                        var viewer = $3Dmol.createViewer(document.getElementById("{div_id}"), {{backgroundColor: "white"}});
-                        viewer.addModel(`{xyz_noisy}`, "xyz");
-                        viewer.setStyle({{stick: {{}}, sphere: {{scale: 0.3}}}});
-                        viewer.zoomTo();
-                        viewer.render();
+                        (function() {{
+                            let viewer = $3Dmol.createViewer(document.getElementById("{div_id}"), {{backgroundColor: "white"}});
+                            viewer.addModel(`{xyz_noisy}`, "xyz");
+                            viewer.setStyle({{stick: {{radius: 0.1}}, sphere: {{scale: 0.3}}}});
+                            {js_edges_noisy}
+                            viewer.zoomTo();
+                            viewer.render();
+                        }})();
                     </script>
                 </td>
             ''')
@@ -1080,7 +1132,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-def exp_1(model, dataloader, device, noise_levels=[0.05, 0.1, 0.2, 1, 2.5]):
+def exp_1(model, dataloader, device, noise_levels=[0.05, 0.1, 0.2, 1, 2.5, 5]):
     print(f"\n--- 1. Running Perturbation Analysis (Noise: {noise_levels}) ---")
 
     # 1. Collect Data
@@ -1452,7 +1504,7 @@ def rotate_half_molecule(pos: torch.Tensor, angle_deg: float, edge_index=None):
     return result_pos, meta
 
 
-def exp_2(model, dataloader, device, twist_angles=[0, 5, 15, 45, 90, 135, 180]):
+def exp_2(model, dataloader, device, twist_angles=[0, 5, 15, 45, 90, 135, 180, 210, 270, 300, 330, 355]):
     print(f"\n--- 2. Running Rotation Analysis (Angles: {twist_angles}) ---")
     
     # 1. Collect Suitable Molecules
@@ -1590,7 +1642,7 @@ def rotate_entire_molecule(pos: torch.Tensor, angle_deg: float):
     new_pos = ((pos_np - center) @ R.T) + center
     return torch.tensor(new_pos, dtype=torch.float32)
 
-def exp_3(model, dataloader, device, rotation_angles=[0, 45, 90, 135, 180]):
+def exp_3(model, dataloader, device, rotation_angles=[0, 45, 90, 135, 180, 210, 245, 300, 330]):
     print(f"\n--- 3. Running Global Rotation Analysis (Angles: {rotation_angles}) ---")
     
     # 1. Collect Data (Rigid rotation works for any size, but we'll use a subset for speed)
@@ -1652,7 +1704,7 @@ def exp_3(model, dataloader, device, rotation_angles=[0, 45, 90, 135, 180]):
     # 4. Generate Visual Components
     # Re-using your existing rotation grid/tsne helper logic
     html_grid = generate_3d_grid_rotation(all_data[:3], rotation_angles, full=True) 
-    html_boxplot = generate_similarity_boxplot(embeddings, "Invariance Analysis: Cosine Similarity (Expect 1.0)")
+    html_boxplot = generate_similarity_boxplot(embeddings, "Invariance Analysis: Cosine Similarity")
     html_tsne = generate_interactive_tsne(embeddings, all_data, "t-SNE Invariance (Points should overlap)")
 
     # 5. Save Report
@@ -1663,9 +1715,9 @@ def exp_3(model, dataloader, device, rotation_angles=[0, 45, 90, 135, 180]):
         <h1>Experiment 3: Global Rotation Invariance Analysis</h1>
         <p>This experiment rotates the <b>entire</b> molecule. Since SchNet uses interatomic distances, performance should remain constant.</p>
         <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">{html_grid}</div>
-        <h2 style="margin-top: 40px;">1. Invariance Metrics (Expect Flat Lines)</h2>
+        <h2 style="margin-top: 40px;">1. Invariance Metrics</h2>
         {fig_metrics.to_html(full_html=False, include_plotlyjs='cdn')}
-        <h2 style="margin-top: 40px;">2. Similarity Boxplot (Expect ~1.0)</h2>
+        <h2 style="margin-top: 40px;">2. Similarity Boxplot</h2>
         {html_boxplot}
         <h2 style="margin-top: 40px;">3. Manifold Overlap</h2>
         {html_tsne}
@@ -1704,9 +1756,6 @@ import shutil
 
 SPATIAL_CKPT_PATH = Path("data/spatial_data_project/best_model.ckpt")
 SPATIAL_CKPT_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-# @TODO: for rotation rotate BFS/DFS arm of connected atoms and not juts any individual atoms
-#   - check if position perturbations are correct
 
 @hydra.main(version_base="1.3", config_path="../../config", config_name="config")
 def main(cfg: DictConfig) -> None:
