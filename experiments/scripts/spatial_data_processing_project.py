@@ -468,12 +468,42 @@ def exp_4(model, dataloader, device):
         
         # Add Training Cutoff Line
         fig.add_vline(x=original_cutoff, line_dash="dash", line_color="#7F8C8D", row=r, col=c)
-
-    fig.update_layout(height=1000, template="plotly_white", title="Impact of Interaction Cutoff on Model Performance")
     
+
+    # Final Layout Polish
+    fig.update_layout(
+        title_text="Impact of Interaction Cutoff on Model Performance",
+        height=900, # Taller to accommodate 4 rows
+        template="plotly_white",
+        showlegend=False
+    )
+    
+    # Ensure all X-axes have appropriate labels
+    fig.update_xaxes(title_text="Cutoff (Å)", row=4, col=1)
+    fig.update_xaxes(title_text="Cutoff (Å)", row=3, col=2) # Since 4,2 is empty
+
+    # --- NEW VISUALIZATION LOGIC ---
+    # 1. Grab samples
+    all_data = []
+    for batch in dataloader:
+        all_data.extend(batch.to_data_list())
+        #if len(all_data) > 100: break
+        
+    viz_samples = random.sample(all_data, min(3, len(all_data)))
+    
+    # 2. Define Visual Cutoffs
+    viz_cutoffs = [1, 2, 5, 10]
+    
+    # 3. Generate Grid HTML (Assuming generate_interaction_grid_html is defined elsewhere)
+    # Note: Ensure generate_interaction_grid_html is available in scope
+    try:
+        html_rf_viz = generate_interaction_grid_html(viz_samples, viz_cutoffs)
+    except NameError:
+        html_rf_viz = "<div>Visual grid generator function not found.</div>"
+
     if 'OUTPUT_DIR' in globals():
         out_path = OUTPUT_DIR / "report_cutoff.html"
-        save_dashboard_report(out_path, "Receptive Field Analysis", "", fig.to_html(full_html=False, include_plotlyjs='cdn'), tsne=False)
+        save_dashboard_report(out_path, "Receptive Field Analysis", html_rf_viz, fig.to_html(full_html=False, include_plotlyjs='cdn'), tsne=False)
 
 import torch
 import numpy as np
@@ -804,19 +834,34 @@ def generate_interactive_tsne(embedding_dict, all_data_list, title):
     # 5. Prepare 3D Data
     print("   [Info] Pre-calculating 3D structures for visualization...")
     mol_db = {}
-    
+        
     for i, data in enumerate(all_data_list):
         mol_entry = {}
         for k in keys:
-            angle = 0.0
-            if "Twist" in k or "Rot" in k:
-                angle = extract_angle(k)
+            # 1. Extract the number from the label (e.g., "0.05" from "Noise 0.05")
+            val = extract_angle(k) # Your existing regex helper
             
             d_clone = data.clone()
-            if angle != 0:
-                d_clone.pos, _ = rotate_half_molecule(d_clone.pos, angle, d_clone.edge_index)
             
+            # 2. Apply the correct perturbation based on the label name
+            if "Twist" in k or "Rot" in k:
+                # Rotation Logic
+                if val != 0:
+                    if "overlap" in title.lower():
+                        d_clone.pos = rotate_entire_molecule(d_clone.pos, val)
+                    else:
+                        d_clone.pos, _ = rotate_half_molecule(d_clone.pos, val, d_clone.edge_index)
+            
+
+            elif "Noise" in k or "nl" in k:
+                # Noise Logic (Matching your experiment's math)
+                if val > 0:
+                    torch.manual_seed(42 + i) # Optional: keeps the 'look' consistent
+                    d_clone.pos = d_clone.pos + torch.randn_like(d_clone.pos) * val
+            
+            # 3. Convert to XYZ string for 3Dmol.js
             mol_entry[k] = tensor_to_xyz(d_clone.pos, d_clone.z)
+            
         mol_db[i] = mol_entry
         
     mol_db_json = json.dumps(mol_db)
@@ -1035,7 +1080,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-def exp_1(model, dataloader, device, noise_levels=[0.05, 0.2, 1, 2.5]):
+def exp_1(model, dataloader, device, noise_levels=[0.05, 0.1, 0.2, 1, 2.5]):
     print(f"\n--- 1. Running Perturbation Analysis (Noise: {noise_levels}) ---")
 
     # 1. Collect Data
@@ -1058,9 +1103,10 @@ def exp_1(model, dataloader, device, noise_levels=[0.05, 0.2, 1, 2.5]):
         
         # Create Noisy Dataset
         noisy_dataset = []
-        for d in all_data_list:
+        for i, d in enumerate(all_data_list):
             d_n = d.clone()
             if nl > 0:
+                torch.manual_seed(42 + i) # Optional: keeps the 'look' consistent
                 d_n.pos = d_n.pos + torch.randn_like(d_n.pos) * nl
             noisy_dataset.append(d_n)
             
@@ -1257,7 +1303,7 @@ def get_wireframe_wedge_js(center, axis, radius, angle_deg, moved_pos_list):
 
     return "\n".join(js_lines)
 
-def generate_3d_grid_rotation(molecule_list, angles):
+def generate_3d_grid_rotation(molecule_list, angles, full=False):
     if not molecule_list: return ""
     
     indices = random.sample(range(len(molecule_list)), min(3, len(molecule_list)))
@@ -1293,28 +1339,33 @@ def generate_3d_grid_rotation(molecule_list, angles):
         for ang in angles:
             mol_view = mol_orig.clone()
             
-            # --- 1. ROTATE ---
-            mol_view.pos, meta = rotate_half_molecule(mol_view.pos, float(ang), mol_view.edge_index)
+            if full:
+                mol_view.pos = rotate_entire_molecule(mol_view.pos, float(ang))
+                js_axis = ""
+                js_arcs = ""
+            else:
+                # --- 1. ROTATE ---
+                mol_view.pos, meta = rotate_half_molecule(mol_view.pos, float(ang), mol_view.edge_index)
+            
+                # --- 2. GENERATE VISUALS ---
+                center = meta['center']
+                axis = meta['axis']
+                moved_pos = mol_view.pos.cpu().numpy()[meta['mask']]
+
+                # Axis Line (Blue) - Length 2.5x radius to encompass the arcs
+                ax_start = center - axis * (mol_radius * 2.5)
+                ax_end   = center + axis * (mol_radius * 2.5)
+                def vstr(v): return f"{{x:{v[0]:.3f},y:{v[1]:.3f},z:{v[2]:.3f}}}"
+                
+                js_axis = f"viewer.addLine({{start:{vstr(ax_start)}, end:{vstr(ax_end)}, color:'blue', linewidth:8}});"
+                
+                # Red Arcs
+                js_arcs = get_wireframe_wedge_js(center, axis, mol_radius, float(ang), moved_pos)
             
             xyz_str = get_xyz_string(mol_view) 
-            div_id = f"mol_{idx}_{uuid.uuid4().hex}"
+            div_id = f"viz_{idx}_{int(ang)}_{uuid.uuid4().hex[:6]}"
 
-            # --- 2. GENERATE VISUALS ---
-            center = meta['center']
-            axis = meta['axis']
-            moved_pos = mol_view.pos.cpu().numpy()[meta['mask']]
-            div_id = f"mol_{idx}_orig"
-            
-            # Axis Line (Blue) - Length 2.5x radius to encompass the arcs
-            ax_start = center - axis * (mol_radius * 2.5)
-            ax_end   = center + axis * (mol_radius * 2.5)
-            def vstr(v): return f"{{x:{v[0]:.3f},y:{v[1]:.3f},z:{v[2]:.3f}}}"
-            
-            js_axis = f"viewer.addLine({{start:{vstr(ax_start)}, end:{vstr(ax_end)}, color:'blue', linewidth:8}});"
-            
-            # Red Arcs
-            js_arcs = get_wireframe_wedge_js(center, axis, mol_radius, float(ang), moved_pos)
-            
+
             html_parts.append(f'''
                 <td style="border: 1px solid #ddd; padding: 5px;">
                     <div id="{div_id}" style="height: 200px; width: 200px; position: relative;"></div>
@@ -1350,84 +1401,56 @@ import torch
 import numpy as np
 from torch_geometric.utils import to_undirected
 
-def rotate_half_molecule(pos: torch.Tensor, angle_deg: float, edge_index: torch.Tensor = None):
+def rotate_half_molecule(pos: torch.Tensor, angle_deg: float, edge_index=None):
     """
-    Chemically valid rotation:
-    1. Finds a central bond.
-    2. BFS to find all atoms in the 'moving' branch.
-    3. Rotates branch around the bond axis (preserving bond lengths).
+    Splits molecule along principal axis and rotates one half.
+    Returns:
+        new_pos_tensor: The rotated coordinates.
+        meta: Dict containing 'axis', 'center', 'mask_right' for visualization.
     """
-    if angle_deg == 0:
-        return pos, {'axis': np.array([1,0,0]), 'center': pos.mean(0).cpu().numpy(), 'mask': np.zeros(pos.shape[0], dtype=bool)}
-
     pos_np = pos.cpu().numpy()
-    num_nodes = pos_np.shape[0]
+    center = np.mean(pos_np, axis=0)
+    centered_pos = pos_np - center
     
-    # --- 1. Identify a Rotation Axis (A Central Bond) ---
-    # If no edge_index provided, we fallback to the old spatial method 
-    # (but for SchNet, you definitely have edge_index!)
-    if edge_index is None:
-        # Fallback to spatial split if edges aren't available
-        # (Included for safety, but try to pass edge_index)
-        return _spatial_fallback(pos, angle_deg)
+    # 1. Find Principal Axis
+    try:
+        # SVD is robust for PCA
+        U, S, Vt = np.linalg.svd(centered_pos)
+        principal_axis = Vt[0] # First principal component
+    except:
+        principal_axis = np.array([1.0, 0.0, 0.0]) # Fallback
 
-    # Find a bond near the center of the molecule to rotate
-    center_mol = np.mean(pos_np, axis=0)
-    u_idx, v_idx = edge_index[0].cpu().numpy(), edge_index[1].cpu().numpy()
+    # 2. Identify the "Right" half
+    projections = centered_pos @ principal_axis
+    median_proj = np.median(projections)
+    mask_right = projections > median_proj
     
-    # Midpoints of all bonds
-    midpoints = (pos_np[u_idx] + pos_np[v_idx]) / 2
-    dists = np.linalg.norm(midpoints - center_mol, axis=1)
-    
-    # Pick the most 'central' bond
-    best_bond_idx = np.argmin(dists)
-    node_a, node_b = u_idx[best_bond_idx], v_idx[best_bond_idx]
-    
-    # --- 2. BFS: Find the moving branch ---
-    # We want to find all atoms connected to node_b without going through node_a
-    adj = [[] for _ in range(num_nodes)]
-    for i in range(len(u_idx)):
-        # Skip the bond we are rotating around to "break" the graph into two
-        if (u_idx[i] == node_a and v_idx[i] == node_b) or (u_idx[i] == node_b and v_idx[i] == node_a):
-            continue
-        adj[u_idx[i]].append(v_idx[i])
-        
-    moving_nodes = set()
-    queue = [node_b]
-    visited = {node_a, node_b}
-    while queue:
-        curr = queue.pop(0)
-        moving_nodes.add(curr)
-        for neighbor in adj[curr]:
-            if neighbor not in visited:
-                visited.add(neighbor)
-                queue.append(neighbor)
-    
-    mask_moving = np.zeros(num_nodes, dtype=bool)
-    for idx in moving_nodes: mask_moving[idx] = True
-
-    # --- 3. Apply Rodrigues Rotation ---
-    axis = pos_np[node_b] - pos_np[node_a]
-    axis = axis / (np.linalg.norm(axis) + 1e-9)
-    center = pos_np[node_a]
-    
+    # 3. Create Rotation Matrix
     angle_rad = np.radians(angle_deg)
-    K = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+    # Normalize axis just in case
+    u = principal_axis / (np.linalg.norm(principal_axis) + 1e-6)
+    
+    # Rodrigues' rotation matrix components
+    K = np.array([[0, -u[2], u[1]], [u[2], 0, -u[0]], [-u[1], u[0], 0]])
     R = np.eye(3) + np.sin(angle_rad) * K + (1 - np.cos(angle_rad)) * (K @ K)
     
-    new_pos = pos_np.copy()
-    # Rotate only the nodes in the branch
-    branch_coords = pos_np[mask_moving] - center
-    new_pos[mask_moving] = (branch_coords @ R.T) + center
+    # 4. Apply Rotation
+    new_pos = centered_pos.copy()
+    # Rotate only the 'right' atoms
+    new_pos[mask_right] = (centered_pos[mask_right] @ R.T)
     
+    result_pos = torch.tensor(new_pos + center, dtype=torch.float32)
+    
+    # Return metadata for visualization
     meta = {
-        'axis': axis,
+        'axis': u,
         'center': center,
-        'mask': mask_moving,
+        'mask': mask_right, # Boolean array of which atoms moved
         'angle': angle_deg
     }
     
-    return torch.tensor(new_pos, dtype=torch.float32), meta
+    return result_pos, meta
+
 
 def exp_2(model, dataloader, device, twist_angles=[0, 5, 15, 45, 90, 135, 180]):
     print(f"\n--- 2. Running Rotation Analysis (Angles: {twist_angles}) ---")
@@ -1574,7 +1597,7 @@ def exp_3(model, dataloader, device, rotation_angles=[0, 45, 90, 135, 180]):
     all_data = []
     for batch in tqdm(dataloader, desc="Loading Dataset"):
         all_data.extend(batch.to_data_list())
-        if len(all_data) >= 200: break # Sufficient for sanity check
+        #if len(all_data) >= 200: break # Sufficient for sanity check
 
     # 2. Collect Metrics & Embeddings
     keys = ["Original" if a == 0 else f"Rot ({a}°)" for a in rotation_angles]
@@ -1628,7 +1651,7 @@ def exp_3(model, dataloader, device, rotation_angles=[0, 45, 90, 135, 180]):
 
     # 4. Generate Visual Components
     # Re-using your existing rotation grid/tsne helper logic
-    html_grid = generate_3d_grid_rotation(all_data[:3], rotation_angles) 
+    html_grid = generate_3d_grid_rotation(all_data[:3], rotation_angles, full=True) 
     html_boxplot = generate_similarity_boxplot(embeddings, "Invariance Analysis: Cosine Similarity (Expect 1.0)")
     html_tsne = generate_interactive_tsne(embeddings, all_data, "t-SNE Invariance (Points should overlap)")
 
