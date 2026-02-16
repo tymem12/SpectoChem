@@ -35,7 +35,7 @@ def setup_trainer(
         accelerator=DEVICE,
         devices=1,
         num_sanity_val_steps=2,
-        check_val_every_n_epoch=1,
+        check_val_every_n_epoch=10,
         reload_dataloaders_every_n_epochs=reload_dataloaders_every_n_epochs,
     )
 
