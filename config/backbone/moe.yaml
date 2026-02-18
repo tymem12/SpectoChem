@@ -1,0 +1,14 @@
+gnn_cls: gjepa.models.backbones.MoESchNetEncoder
+hidden_channels: 128
+num_filters: 128
+num_interactions: 6
+num_gaussians: 50
+cutoff: 10.0
+max_num_neighbors: 64
+readout: add
+num_experts: 3
+use_full_uma_for_router: true
+router_hidden_dim: 64
+routing_mode: soft
+disable_pos: false
+out_dim: ${.hidden_channels}

@@ -1,0 +1,13 @@
+gnn_cls: gjepa.models.backbones.InvariantProjectionEncoder
+hidden_channels: 128
+num_filters: 128
+num_interactions: 6
+num_gaussians: 50
+cutoff: 10.0
+max_num_neighbors: 64
+readout: add
+use_mlp_projection: true
+uma_mlp_hidden_dim: 256
+use_z_embedding: true
+disable_pos: false
+out_dim: ${.hidden_channels}

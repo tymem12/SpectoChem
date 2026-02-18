@@ -3,7 +3,7 @@ hidden_channels: 128
 num_filters: 128
 num_interactions: 4
 num_gaussians: 50
-cutoff: 5.0
-max_num_neighbors: 16
+cutoff: 10.0
+max_num_neighbors: 64
 disable_pos: false
 out_dim: ${.hidden_channels}

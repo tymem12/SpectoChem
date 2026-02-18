@@ -37,37 +37,31 @@ model_configs = {
         # Config 1: Pre-Interaction Gating (Standard)
         {
             'post_interaction_gating': False,
-            'num_attention_heads': 4
         },
         # Config 2: Post-Interaction Gating (New logic)
         {
             'post_interaction_gating': True,
-            'num_attention_heads': 4
         }
     ],
     'moe': [
         # Config 1: Soft Routing (Weighted Sum) with Full UMA Router
         {
             'routing_mode': 'soft',
-            'num_experts': 3,
             'use_full_uma_for_router': True
         },
         # Config 2: Hard Routing (Gumbel) with Full UMA Router
         {
             'routing_mode': 'hard',
-            'num_experts': 3,
             'use_full_uma_for_router': True
         },
         # Config 3: Soft Routing with only Scalar Router (Simpler Router)
         {
             'routing_mode': 'soft',
-            'num_experts': 3,
             'use_full_uma_for_router': False
         },
         # Config 4: Hard Routing (Gumbel) with only Scalar Router
         {
             'routing_mode': 'hard',
-            'num_experts': 3,
             'use_full_uma_for_router': False
         },
     ]
