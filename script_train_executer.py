@@ -16,7 +16,6 @@ model_configs = {
         {
             'use_mlp_projection': True,
             'use_z_embedding': True,
-            'uma_mlp_hidden_dim': 256
         },
         # Config 2: Weighted Sum + SchNet Embedding (Simpler)
         {
@@ -27,7 +26,11 @@ model_configs = {
         {
             'use_mlp_projection': True,
             'use_z_embedding': False,
-            'uma_mlp_hidden_dim': 256
+        },
+        # Config 4
+        {
+            'use_mlp_projection': False,
+            'use_z_embedding': False,
         }
     ],
     'geometric_gating': [
@@ -60,7 +63,13 @@ model_configs = {
             'routing_mode': 'soft',
             'num_experts': 3,
             'use_full_uma_for_router': False
-        }
+        },
+        # Config 4: Hard Routing (Gumbel) with only Scalar Router
+        {
+            'routing_mode': 'hard',
+            'num_experts': 3,
+            'use_full_uma_for_router': False
+        },
     ]
 }
 

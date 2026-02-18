@@ -16,7 +16,7 @@ class GeometricGatingEncoder(SchNet):
                  num_interactions: int = 6,
                  num_gaussians: int = 50,
                  cutoff: float = 10.0,
-                 max_num_neighbors: int = 32,
+                 max_num_neighbors: int = 64,
                  readout: str = 'add',
                  # Attention & Gating Parameters
                  num_attention_heads: int = 4,

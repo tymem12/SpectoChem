@@ -17,7 +17,7 @@ class InvariantProjectionEncoder(SchNet):
                  num_interactions: int = 6,
                  num_gaussians: int = 50,
                  cutoff: float = 10.0,
-                 max_num_neighbors: int = 32,
+                 max_num_neighbors: int = 64,
                  readout: str = 'add',
                  # UMA Specific Parameters
                  use_mlp_projection: bool = True,
