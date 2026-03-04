@@ -6,7 +6,13 @@ from torch_geometric.data import Data
 # Assuming SchNetEncoder is defined/imported as before
 from gjepa.models.backbones.schnet import SchNetEncoder
 
+# mixture of experts z schnetów:
+#   osadzenie z umy (tylko normy [skalar, wektor, tensor]/całe osadzenie) ->
+#   -> router (warstwa liniowa) ->  ważenie wyjść schnetów: soft (ważenie)/hard (one-hot)
+
 class MoESchNetEncoder(nn.Module):
+    handles_pos_encoding = True
+
     def __init__(self,
                  num_experts: int = 3,
                  use_full_uma_for_router: bool = True,
@@ -23,6 +29,8 @@ class MoESchNetEncoder(nn.Module):
         """
         super().__init__()
         
+        self.out_channels = hidden_channels  # <--- ADD THIS LINE
+
         self.num_experts = num_experts
         self.use_full_uma_for_router = use_full_uma_for_router
         self.routing_mode = routing_mode.lower()

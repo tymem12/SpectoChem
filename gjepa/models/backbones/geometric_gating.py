@@ -7,6 +7,8 @@ try:
 except ImportError:
     from torch_geometric.nn.models.schnet import SchNet
 
+# atencja - query - osadzenie z schneta; key/value: osadzenie z umy -> schnet (atencja albo przed albo po schnecie) 
+
 class GeometricGatingEncoder(SchNet):
     handles_pos_encoding = True
 

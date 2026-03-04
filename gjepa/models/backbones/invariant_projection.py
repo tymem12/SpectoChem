@@ -8,6 +8,16 @@ try:
 except ImportError:
     from torch_geometric.nn.models.schnet import SchNet
 
+# embedding z umy: [liczba atomów, 9, 128] -> 0: skalar, 1-3: wektor, 4-8: tensor
+# nie możemy brać całego wektora i wtedy go przetwarzać
+#   - potrzebne są specjalne warstwy (np. backbone eSCDN z umy/jakaś atencja ekwiwariantna - żeby te znaczenia fizyczne były zachowane
+
+# poprawić hiperparametry umy - np. cutoff, neighbors (w schnecie poprawiły wyniki)
+#   - większa uma
+
+# embedding z umy (wielkości reprezentacji dla [skalar, wektor, tensor]) -> warstwa liniowa/suma ważona -> (+ embedding schnet) -> wejście do schneta
+
+
 class InvariantProjectionEncoder(SchNet):
     handles_pos_encoding = True
 
