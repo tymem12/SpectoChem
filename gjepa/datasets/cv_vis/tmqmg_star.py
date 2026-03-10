@@ -16,6 +16,7 @@ class TMQMGStarDataset(InMemoryDataset):
         root: str,
         filter_type,
         block_3_only: bool = False,
+        mark_block_3: bool = False,
         y_columns: Optional[Sequence[str]] = None,
         extra_fields: Optional[Sequence[str]] = None,
         transform=None,
@@ -55,7 +56,7 @@ class TMQMGStarDataset(InMemoryDataset):
         self.standarize_f = standarize_f
         self.lambda_bucket_size = lambda_bucket_size
         self.load_representations = load_representations
-
+        self.mark_block_3 = mark_block_3
 
         if self.prediction_type not in {"pairs", "vector", 'only_lambdas', 'binary_classification',
                                         'binary_vector_multiclass', 'binary_vector_multilabel'}:
@@ -121,14 +122,19 @@ class TMQMGStarDataset(InMemoryDataset):
             f"filter_f_value-{self.filter_f_value}_"
             f"lanbda_bucket_size-{self.lambda_bucket_size}_"
             f"load_representations-{load_reprs_str}_"
+            f"mark-block3-{self.mark_block_3}_"
             f"pre{pre_transform}.pt"
         )
 
         filename = filename.replace("__", "_").replace("..", ".")
         return [filename]
 
+    @staticmethod
+    def _get_csv_filename(block_3_only) -> str:
+        return "raw/uvvis_final_40k.csv" if block_3_only else "raw/tmqm_all.csv"
+
     def _csv_filename(self) -> str:
-        return "raw/uvvis_final_40k.csv" if self.block_3_only else "raw/tmqm_all.csv"
+        return self._get_csv_filename(self.block_3_only)
 
     def download(self):
         pass
@@ -333,7 +339,6 @@ class TMQMGStarDataset(InMemoryDataset):
         elif self.prediction_type == 'binary_vector_multilabel':
             return self._build_binary_vector_multilabel(transitions)
 
-
     def process(self):
         base_csv_path = os.path.join(self.root, self._csv_filename())
         tmqmg_star_path = os.path.join(self.root, "raw", "tmqmg_star.csv")
@@ -363,6 +368,18 @@ class TMQMGStarDataset(InMemoryDataset):
             right_on="id"
         )
 
+        if self.mark_block_3:
+            if not self.block_3_only:
+                block_3_csv_path = os.path.join(self.root, self._get_csv_filename(block_3_only=True))
+                if not os.path.exists(block_3_csv_path):
+                    raise FileNotFoundError(f"Block 3 CSV not found for marking: {block_3_csv_path}")
+
+                df_block_3 = pd.read_csv(block_3_csv_path, usecols=["CSD_code"])
+                block_3_codes = set(df_block_3["CSD_code"])
+                df["is_from_block_3"] = df["CSD_code"].isin(block_3_codes)
+            else:
+                df["is_from_block_3"] = True
+
         print(f"Merged dataset: {len(df)} rows (from {len(df_base)} base and {len(df_star)} star)")
 
         required = ["atom_coords", "atom_types", "SMILES", "origin_ID", "CSD_code"]
@@ -389,6 +406,10 @@ class TMQMGStarDataset(InMemoryDataset):
             origin_id = None if pd.isna(row["origin_ID"]) else str(row["origin_ID"])
             csd_code = None if pd.isna(row["CSD_code"]) else str(row["CSD_code"])
             kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
+
+            if self.mark_block_3:
+                kwargs["is_from_block_3"] = row["is_from_block_3"]
+
             if self.load_representations:
                 emb = self.precomputed_embedings.get_embedding(csd_code)
                 kwargs['representation'] = emb
