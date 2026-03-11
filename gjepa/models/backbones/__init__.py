@@ -7,6 +7,9 @@ from .uma import UMAEncoder
 from .dummy_model import DummyModel
 from .gated_attention_pool import GatedAttentionPoolModel
 from .transformer_attention_pool import TransformerAttentionPoolModel
+from .invariant_projection import InvariantProjectionEncoder
+from .geometric_gating import GeometricGatingEncoder
+from .moe import MoESchNetEncoder
 
 __all__ = [
     "CustomGNN",
@@ -21,4 +24,7 @@ __all__ = [
     "DummyModel",
     "GatedAttentionPoolModel",
     "TransformerAttentionPoolModel",
+    "InvariantProjectionEncoder",
+    "GeometricGatingEncoder",
+    "MoESchNetEncoder",
 ]

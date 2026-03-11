@@ -17,7 +17,7 @@ class SchNetEncoder(SchNet):
                  num_interactions: int = 6,
                  num_gaussians: int = 50,
                  cutoff: float = 10.0,
-                 max_num_neighbors: int = 32,
+                 max_num_neighbors: int = 64,
                  readout: str = 'add',
                  **kwargs):
         super().__init__(hidden_channels=hidden_channels,

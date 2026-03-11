@@ -1,0 +1,13 @@
+gnn_cls: gjepa.models.backbones.GeometricGatingEncoder
+hidden_channels: 128
+num_filters: 128
+num_interactions: 6
+num_gaussians: 50
+cutoff: 10.0
+max_num_neighbors: 64
+readout: add
+num_attention_heads: 4
+attention_dropout: 0.1
+post_interaction_gating: false
+disable_pos: false
+out_dim: ${.hidden_channels}
