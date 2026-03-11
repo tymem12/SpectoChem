@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from typing import Optional
 from ase import Atoms
 from torch_geometric.data import Batch, Data
 from fairchem.core import pretrained_mlip
@@ -40,7 +41,7 @@ def pyg_to_atomicdata(data: Data):
 
     return atomicdata
 
-def pool_over_heads(atom_embeddings: torch.Tensor, method: str = "first_channel") -> torch.Tensor:
+def pool_over_heads(atom_embeddings: torch.Tensor, method: Optional[str] = "first_channel") -> torch.Tensor:
     """
     Pool UMA per-head embeddings into a single per-atom embedding.
     
@@ -51,16 +52,20 @@ def pool_over_heads(atom_embeddings: torch.Tensor, method: str = "first_channel"
     Returns:
         Tensor of shape [N_atoms, hidden_dim] (head dimension pooled)
     """
-    if method == "mean":
-        return atom_embeddings.mean(dim=1)  # pool over heads
-    elif method == "sum":
-        return atom_embeddings.sum(dim=1)
-    elif method == "max":
-        return atom_embeddings.max(dim=1).values
-    elif method == "first_channel":
-        return atom_embeddings[..., 0, :]
-    else:
-        raise ValueError(f"Unknown pooling method: {method}")
+    if method is not None:
+        match method:
+            case "mean":
+                atom_embeddings = atom_embeddings.mean(dim=1)  # pool over heads
+            case "sum":
+                atom_embeddings = atom_embeddings.sum(dim=1)
+            case "max":
+                atom_embeddings = atom_embeddings.max(dim=1).values
+            case "first_channel":
+                atom_embeddings = atom_embeddings[..., 0, :]
+            case _:
+                raise ValueError(f"Unknown pooling method: {method}")
+
+    return atom_embeddings
 
 # TODO: check if UMA interprets the batch correctly (if the result is similar to predicting on individual data points
 # (`torch.cat(list(map(predict, batch.to_data_list())))`))
@@ -114,7 +119,7 @@ class UMAEncoder(nn.Module):
     def __init__(
         self,
         predictor_name: str = "uma-s-1p1",
-        head_pool: str = "first_channel"
+        head_pool: Optional[str] = None
     ):
         """
         predictor_name: name of the pretrained UMA model to use

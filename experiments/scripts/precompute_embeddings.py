@@ -32,7 +32,9 @@ def main(cfg: DictConfig) -> None:
         pos_enc_path=config.pos_encoding.file if config.pos_encoding else None
     )
 
-    datamodule.setup(stage="predict")
+    datamodule.setup(
+        stage="fit"
+    )
 
     encoder_name = backbone_module_path.rsplit(".", maxsplit=1)[-1].removesuffix("Encoder")
 
