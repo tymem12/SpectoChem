@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Type, TypeVar, Generic
+from typing import Any, ClassVar, Literal, Optional, Type, TypeVar, Generic
 
 from pydantic import BaseModel, Extra, SerializeAsAny, model_validator
 
@@ -45,7 +45,7 @@ class GraphLevelDatasetConfig(GraphDatasetConfig):
     split_ratios: tuple[float, float] | None
     additional_loading_params: dict[str, Any] | None = None
     target_standarization: bool | None = None
-
+    block_3_split_mode: Optional[Literal["train", "test"]]
 
 
 

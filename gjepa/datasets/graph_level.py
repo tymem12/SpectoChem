@@ -73,6 +73,8 @@ class GraphLevelDataModule(GraphDataModule):
 
         should_split = name != ZINC.__name__
 
+        block_3_split_mode = self.config.block_3_split_mode
+
         if should_split:
             if split_ratios is None:
                 raise ValueError(f"{name!r} dataset requires `split_ratios` (e.g., `[0.8, 0.1]`)")
@@ -90,25 +92,76 @@ class GraphLevelDataModule(GraphDataModule):
             raise ValueError(
                 f"{name!r} dataset uses official splits; `split_ratios` must be `None`."
             )
+
+        if block_3_split_mode is not None:
+            if self.config.additional_loading_params is None:
+                self.config.additional_loading_params = {}
+
+            additional_loading_params = self.config.additional_loading_params
+
+            old_b3 = additional_loading_params.get('block_3_only', 'missing')
+            old_mark = additional_loading_params.get('mark_block_3', 'missing')
+
+            print(f"Notice: `config.block_3_split_mode` is {block_3_split_mode!r}. "
+                  f"Overwriting additional_loading_params: `block_3_only` ({old_b3!r} -> False), "
+                  f"`mark_block_3` ({old_mark!r} -> True).")
+
+            additional_loading_params['block_3_only'] = False
+            additional_loading_params['mark_block_3'] = True
+
         dataset = load_graph(
             root_dir=self.config.root_dir,
             name=name,
             additional_loading_params=self.config.additional_loading_params,
             pre_transform=create_transform(self.config.pre_transforms),
             transform=create_transform(self.config.transforms),
-
         )
 
         if self.pos_enc_path is not None:
             attach_pe_to_dataset_inplace(dataset=dataset, pe_path=self.pos_enc_path)
-        if should_split:
-            self.train_ds, self.val_ds, self.test_ds = split_dataset(
-                dataset, split_ratios
-            )
+
+        if block_3_split_mode is not None:
+            block_3_indices = []
+            non_block_3_indices = []
+
+            for i, d in enumerate(dataset):
+                if not hasattr(d, 'is_from_block_3'):
+                    raise AttributeError(f"Molecule at index {i} is missing the 'is_from_block_3' property.")
+
+                if d.is_from_block_3:
+                    block_3_indices.append(i)
+                else:
+                    non_block_3_indices.append(i)
+
+            block_3_subset = Subset(dataset, block_3_indices)
+            non_block_3_subset = Subset(dataset, non_block_3_indices)
+
+            # normalize train/val ratios to sum to 1.0 (since test relies strictly on the block 3 condition)
+            train_r, val_r = split_ratios[0], split_ratios[1]
+            norm_train_r = train_r / (train_r + val_r)
+
+            match block_3_split_mode:
+                case "train":
+                    train_val_pool, test_pool = block_3_subset, non_block_3_subset
+                case "test":
+                    train_val_pool, test_pool = non_block_3_subset, block_3_subset
+                case _:
+                    raise ValueError(f"Invalid `block_3_split_mode` {block_3_split_mode}")
+
+            num_train = int(len(train_val_pool) * norm_train_r)
+            num_val = len(train_val_pool) - num_train
+
+            self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val])
+            self.test_ds = test_pool
         else:
-            self.train_ds = Subset(dataset, dataset.split_indices["train"])
-            self.val_ds   = Subset(dataset, dataset.split_indices["val"])
-            self.test_ds  = Subset(dataset, dataset.split_indices["test"])
+            if should_split:
+                self.train_ds, self.val_ds, self.test_ds = split_dataset(
+                    dataset, split_ratios
+                )
+            else:
+                self.train_ds = Subset(dataset, dataset.split_indices["train"])
+                self.val_ds   = Subset(dataset, dataset.split_indices["val"])
+                self.test_ds  = Subset(dataset, dataset.split_indices["test"])
 
         print(self.test_ds[0].y)
 
@@ -119,7 +172,6 @@ class GraphLevelDataModule(GraphDataModule):
         print(f'len of train is {len(self.train_ds)}')
         print(f'len of val is {len(self.val_ds)}')
         print(f'len of test is {len(self.test_ds)}')
-
 
     def _standarize_output(self, type: str, standarize_lambda: bool, standarize_f: bool):
         if self.train_ds is None:

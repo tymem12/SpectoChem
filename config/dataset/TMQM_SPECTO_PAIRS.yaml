@@ -8,6 +8,7 @@ in_channels: 1
 out_channels: 2
 task_type: multiregression
 split_ratios: [0.8, 0.1]
+block_3_split_mode: null
 metric_mode: min
 main_metric: MAE
 additional_loading_params: 
