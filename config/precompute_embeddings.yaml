@@ -4,7 +4,7 @@ defaults:
   - backbone: ???
   - _self_
 
-pool: "mean"
+pool: null
 batch_size: 1
 output_model_subdir: null
 output_dir: "data/precomputed_embeddings"
