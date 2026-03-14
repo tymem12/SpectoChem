@@ -34,7 +34,11 @@ class TMQMGStarDataset(InMemoryDataset):
         standarize_lambda: bool = False,
         standarize_f: bool = False,
         lambda_bucket_size: int = 0,
-        load_representations: str = ''
+        load_representations: str = '',
+        lambda_outlier_threshold : str = None,
+        f_outlier_threshold : float = None,
+        outlier_strategy: float = None,
+        convert_to_ev: bool = False
 
 
     ):  
@@ -57,9 +61,14 @@ class TMQMGStarDataset(InMemoryDataset):
         self.lambda_bucket_size = lambda_bucket_size
         self.load_representations = load_representations
         self.mark_block_3 = mark_block_3
+        self.lambda_outlier_threshold = lambda_outlier_threshold
+        self.f_outlier_threshold = f_outlier_threshold
+        self.outlier_strategy = outlier_strategy
+        self.convert_to_ev = convert_to_ev
 
         if self.prediction_type not in {"pairs", "vector", 'only_lambdas', 'binary_classification',
-                                        'binary_vector_multiclass', 'binary_vector_multilabel'}:
+                                        'binary_vector_multiclass', 'binary_vector_multilabel',
+                                        'lambda_regressor', 'f_regressor'}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
         
@@ -117,12 +126,16 @@ class TMQMGStarDataset(InMemoryDataset):
             f"tmqmg_block3-{self.block_3_only}_"
             f"{pred_type}_{params_str}_"
             f"num_states-{self.num_states}_"
-            f"vis_range-{self.min_lambda}-{self.max_lambda}_"
+            # f"vis_range-{self.min_lambda}-{self.max_lambda}_"
             f"filter_type-{self.filter_type}_min_f_val{self.min_f_value}_"
             f"filter_f_value-{self.filter_f_value}_"
-            f"lanbda_bucket_size-{self.lambda_bucket_size}_"
-            f"load_representations-{load_reprs_str}_"
+            # f"lanbda_bucket_size-{self.lambda_bucket_size}_"
+            # f"load_representations-{load_reprs_str}_"
             f"mark-block3-{self.mark_block_3}_"
+            f"outlier_str-{self.outlier_strategy}_"
+            f"lambda_outlier_thr-{self.lambda_outlier_threshold}_"
+            f"f_outlier_thr-{self.f_outlier_threshold}_"
+            f"con_ev-{self.convert_to_ev}_"
             f"pre{pre_transform}.pt"
         )
 
@@ -214,7 +227,6 @@ class TMQMGStarDataset(InMemoryDataset):
         return result
 
 
-
     
     def filter_data_with_criterion(self, row: pd.Series, filter_type: str):
         if filter_type == 'one_visible_lambda':
@@ -265,7 +277,19 @@ class TMQMGStarDataset(InMemoryDataset):
                 vec.extend([lam])
 
         return torch.tensor([vec], dtype=torch.float32)
-    
+
+    def _build_lambda_regressor(self, transitions: List[Tuple[float, float]], num_pairs: int = 10) -> torch.Tensor:
+        vec = []
+        lam, f = transitions[num_pairs]
+        vec.append(lam)
+        return torch.tensor([vec], dtype=torch.float32)
+
+    def _build_f_regressor(self, transitions: List[Tuple[float, float]], num_pairs: int = 10) -> torch.Tensor:
+        vec = []
+        lam, f = transitions[num_pairs]
+        vec.append(f)
+        return torch.tensor([vec], dtype=torch.float32)
+
     def _build_binary(self, transitions: List[Tuple[float, float]], min_f_value: float = 0) -> torch.Tensor:
         pos = 0
         for lam, f in transitions:
@@ -319,8 +343,11 @@ class TMQMGStarDataset(InMemoryDataset):
     
     def _prepare_the_output_format(self, transitions):
         if not self.prediction_type in {"pairs", "vector", "only_lambdas", "binary_classification",
-                                        'binary_vector_multiclass', 'binary_vector_multilabel'}:
-            raise ValueError('prediction type did not mach: ', " pairs ", " vector ", " only_lambdas", " binary_classification")
+                                        'binary_vector_multiclass', 'binary_vector_multilabel',
+                                        'lambda_regressor', 'f_regressor'}:
+            raise ValueError('prediction type did not mach: ', " pairs ", " vector ",
+                             "only_lambdas", " binary_classification",
+                             'lambda_regressor', 'f_regressor')
         if self.prediction_type == "pairs":
             num_pairs = self.num_states
             min_f_value = self.min_f_value
@@ -338,6 +365,33 @@ class TMQMGStarDataset(InMemoryDataset):
             return self._build_binary_vector_multiclass(transitions)
         elif self.prediction_type == 'binary_vector_multilabel':
             return self._build_binary_vector_multilabel(transitions)
+        elif self.prediction_type == 'lambda_regressor':
+            return self._build_lambda_regressor(transitions, num_pairs=self.num_states)
+        elif self.prediction_type == 'f_regressor':
+            return self._build_f_regressor(transitions, num_pairs=self.num_states)
+
+    def remove_outliers(self, transitions):
+        if not transitions:
+            return []
+        lambda_outlier_threshold = self.lambda_outlier_threshold
+        f_outlier_threshold = self.f_outlier_threshold
+
+        if self.outlier_strategy == "remove_whole_compounds":
+            raise NotImplementedError("Outlier strategy 'remove_whole_compounds' is not implemented yet.")
+        elif self.outlier_strategy == "remove_outlying_transitions" and lambda_outlier_threshold is not None and f_outlier_threshold is not None:
+            removed_outliered_lambdas = [(lam, f) for lam, f in transitions if lam < lambda_outlier_threshold]
+            removed_outliered_f = [(lam, min(f, f_outlier_threshold)) for lam, f in  removed_outliered_lambdas]
+            return removed_outliered_f            
+        return transitions
+        
+    def convert_lambdas_to_ev(self, transitions):
+        if not transitions:
+            return []
+        if self.convert_to_ev and self.prediction_type in {"pairs", 'only_lambdas',
+                                                           'lambda_regressor', 'f_regressor'}:
+            ev_trainsitions = [(1239.84 / lam, f) for lam, f in transitions]
+            return ev_trainsitions
+        return transitions
 
     def process(self):
         base_csv_path = os.path.join(self.root, self._csv_filename())
@@ -415,6 +469,8 @@ class TMQMGStarDataset(InMemoryDataset):
                 kwargs['representation'] = emb
 
             transitions = self.filter_data_with_criterion(row,self.filter_type)
+            transitions = self.remove_outliers(transitions)
+            transitions = self.convert_lambdas_to_ev(transitions)
             if not transitions:
                 continue
             y = self._prepare_the_output_format(transitions)
