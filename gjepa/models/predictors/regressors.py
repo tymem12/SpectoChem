@@ -49,10 +49,10 @@ class MLPRegressor(MLPPredictorMixin, RegressorBase):
         in_channels: int,
         out_channels: int,
         task_type: TaskType,
+        hidden_channels: Optional[list[int]] = None,
+        activation: Optional[str] = None,
         y_std=None,
         prediction_type: Optional[Literal["pairs", "vector", 'only_lambdas']] = None,
-        hidden_channels: Optional[list[int]],
-        activation: Optional[str],
         spectral_loss: Optional[str] = None,
         **loss_kwargs
     ):

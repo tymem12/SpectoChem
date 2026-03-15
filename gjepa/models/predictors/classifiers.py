@@ -37,8 +37,8 @@ class MLPClassifier(MLPPredictorMixin, ClassifierBase):
         in_channels: int,
         out_channels: int,
         task_type: TaskType,
-        hidden_channels: Optional[list[int]],
-        activation: Optional[str]
+        hidden_channels: Optional[list[int]] = None,
+        activation: Optional[str] = None
     ):
         ClassifierBase.__init__(
             self, out_channels, task_type
