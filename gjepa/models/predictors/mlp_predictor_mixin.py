@@ -14,7 +14,8 @@ class MLPPredictorMixin:
         in_channels: int,
         out_channels: int,
         hidden_channels: Optional[list[int]] = None,
-        activation: Optional[str] = None
+        activation: Optional[str] = None,
+        dropout: Optional[float] = None
     ):
         if not hidden_channels:
             self.mlp = nn.Linear(in_channels, out_channels)
@@ -31,6 +32,8 @@ class MLPPredictorMixin:
             layers.append(nn.Linear(dims[i], dims[i+1]))
             if i < len(dims) - 2:
                 layers.append(act_cls())
+                if dropout is not None:
+                    layers.append(nn.Dropout(p=dropout))
 
         self.mlp = nn.Sequential(*layers)
 
