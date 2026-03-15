@@ -1,11 +1,10 @@
 from abc import ABC
 from typing import Literal, Optional
 
-from torch import Tensor, nn
-import torch
+from torch import Tensor
 from gjepa.config import TaskType
 from gjepa.metrics.regression import get_default_regression_metrics
-from gjepa.models.predictors import PredictorBase
+from gjepa.models.predictors import PredictorBase, MLPPredictorMixin
 from gjepa.models.predictors.losses import get_regression_loss
 
 class RegressorBase(PredictorBase, ABC):
@@ -44,19 +43,24 @@ class RegressorBase(PredictorBase, ABC):
         return x
 
 
-class LinearRegressor(RegressorBase):
+class MLPRegressor(MLPPredictorMixin, RegressorBase):
     def __init__(
         self,
-        in_channels: int, out_channels: int,
+        in_channels: int,
+        out_channels: int,
         task_type: TaskType,
         y_std=None,
         prediction_type: Optional[Literal["pairs", "vector", 'only_lambdas']] = None,
+        hidden_channels: Optional[list[int]],
+        activation: Optional[str],
         spectral_loss: Optional[str] = None,
         **loss_kwargs
     ):
-        super().__init__(out_channels, task_type, y_std, prediction_type, spectral_loss, **loss_kwargs)
-        self.linear = nn.Linear(in_channels, out_channels)
+        RegressorBase.__init__(
+            self, out_channels, task_type, y_std, prediction_type, spectral_loss,
+            **loss_kwargs
+        )
 
-
-    def forward(self, x: Tensor) -> Tensor:
-        return self.linear(x)
+        MLPPredictorMixin.__init__(
+            self, in_channels, out_channels, hidden_channels, activation
+        )

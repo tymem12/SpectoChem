@@ -1,11 +1,11 @@
 from abc import ABC
-from typing import Literal
+from typing import Literal, Optional
 
-from torch import Tensor, nn
+from torch import Tensor
 
 from gjepa.config import TaskType
 from gjepa.metrics.classification import get_default_classification_metrics
-from gjepa.models.predictors import PredictorBase
+from gjepa.models.predictors import PredictorBase, MLPPredictorMixin
 from gjepa.models.predictors.losses import get_classification_loss
 
 
@@ -31,11 +31,19 @@ class ClassifierBase(PredictorBase, ABC):
 
         raise ValueError(f"Unsupported task_type in logits_to_proba: {self.task_type}")
 
-class LinearClassifier(ClassifierBase):
-    def __init__(self, in_channels: int, out_channels: int, task_type: TaskType):
-        super().__init__(out_channels, task_type)
-        self.linear = nn.Linear(in_channels, out_channels)
+class MLPClassifier(MLPPredictorMixin, ClassifierBase):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        task_type: TaskType,
+        hidden_channels: Optional[list[int]],
+        activation: Optional[str]
+    ):
+        ClassifierBase.__init__(
+            self, out_channels, task_type
+        )
 
-    def forward(self, x: Tensor) -> Tensor:
-        return self.linear(x)
-
+        MLPPredictorMixin.__init__(
+            self, in_channels, out_channels, hidden_channels, activation
+        )

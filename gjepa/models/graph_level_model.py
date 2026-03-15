@@ -14,7 +14,7 @@ from torch_geometric.nn import global_mean_pool
 
 from gjepa.config import GraphLevelExperimentConfig
 from gjepa.models.encoders import GNNEncoder
-from gjepa.models.predictors import LinearClassifier, LinearRegressor
+from gjepa.models.predictors import MLPClassifier, MLPRegressor
 from gjepa.utils.lr_scheduler import LinearWarmupCosineAnnealingLR  # type: ignore
 from gjepa.utils.cv_vis import plot_graph_with_predictions
 from gjepa.datasets.cv_vis.standarizer_singleton import StandarizerSingletonF, StandarizerSingletonLambda
@@ -34,19 +34,24 @@ class SupervisedGraphLevelGNN(LightningModule):
         self.gnn = GNNEncoder(**self.config.model.backbone)
 
         ds_config = self.config.dataset
+        predictor_kwargs = ds_config.predictor_kwargs
+
+        if predictor_kwargs is None:
+            predictor_kwargs = {}
+        else:
+            predictor_kwargs = predictor_kwargs.copy()
 
         task_type = ds_config.task_type
 
         if task_type.endswith("regression"):
-            predictor_cls = LinearRegressor
-            predictor_kwargs = dict(
+            predictor_cls = MLPRegressor
+            predictor_kwargs |= dict(
                 prediction_type=self._get_prediction_type(),
                 #spectral_loss="sid",
                 #threshold=1e-8
             )
         else:
-            predictor_cls = LinearClassifier
-            predictor_kwargs = {}
+            predictor_cls = MLPClassifier
 
         self.predictor = predictor_cls(
             in_channels=self.gnn.out_channels,
