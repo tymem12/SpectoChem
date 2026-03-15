@@ -38,12 +38,13 @@ class MLPClassifier(MLPPredictorMixin, ClassifierBase):
         out_channels: int,
         task_type: TaskType,
         hidden_channels: Optional[list[int]] = None,
-        activation: Optional[str] = None
+        activation: Optional[str] = None,
+        dropout: Optional[float] = None
     ):
         ClassifierBase.__init__(
             self, out_channels, task_type
         )
 
         MLPPredictorMixin.__init__(
-            self, in_channels, out_channels, hidden_channels, activation
+            self, in_channels, out_channels, hidden_channels, activation, dropout
         )

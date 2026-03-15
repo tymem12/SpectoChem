@@ -51,6 +51,7 @@ class MLPRegressor(MLPPredictorMixin, RegressorBase):
         task_type: TaskType,
         hidden_channels: Optional[list[int]] = None,
         activation: Optional[str] = None,
+        dropout: Optional[float] = None,
         y_std=None,
         prediction_type: Optional[Literal["pairs", "vector", 'only_lambdas']] = None,
         spectral_loss: Optional[str] = None,
@@ -62,5 +63,5 @@ class MLPRegressor(MLPPredictorMixin, RegressorBase):
         )
 
         MLPPredictorMixin.__init__(
-            self, in_channels, out_channels, hidden_channels, activation
+            self, in_channels, out_channels, hidden_channels, activation, dropout
         )
