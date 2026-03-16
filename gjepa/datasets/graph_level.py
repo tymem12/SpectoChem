@@ -7,6 +7,8 @@ from collections.abc import Sequence
 
 import random
 
+from sklearn.model_selection import GroupShuffleSplit
+
 import os
 import torch
 from torch_geometric.loader import DataLoader
@@ -88,10 +90,14 @@ class GraphLevelDataModule(GraphDataModule):
                 raise ValueError(
                     "`split_ratios` must be a sequence of two positive floats summing to less than 1.0"
                 )
-        elif split_ratios is not None:
-            raise ValueError(
-                f"{name!r} dataset uses official splits; `split_ratios` must be `None`."
-            )
+        else:
+            if split_ratios is not None:
+                raise ValueError(
+                    f"{name!r} dataset uses official splits; `split_ratios` must be `None`."
+                )
+
+            assert block_3_split_mode is None, f"{name!r} uses official splits; `block_3_split_mode` must be None."
+            assert not self.config.group_by_isomers, f"{name!r} uses official splits; `group_by_isomers` must be False."
 
         if block_3_split_mode is not None:
             if self.config.additional_loading_params is None:
@@ -120,48 +126,79 @@ class GraphLevelDataModule(GraphDataModule):
         if self.pos_enc_path is not None:
             attach_pe_to_dataset_inplace(dataset=dataset, pe_path=self.pos_enc_path)
 
-        if block_3_split_mode is not None:
-            block_3_indices = []
-            non_block_3_indices = []
+        def _get_isomer_key(d):
+            return tuple(sorted(d.z.tolist()))
 
-            for i, d in enumerate(dataset):
-                if not hasattr(d, 'is_from_block_3'):
-                    raise AttributeError(f"Molecule at index {i} is missing the 'is_from_block_3' property.")
+        def _isomer_group_split(ds, train_size):
+            groups = list(map(_get_isomer_key, ds))
+            gss = GroupShuffleSplit(n_splits=1, train_size=train_size)
+            idx1, idx2 = next(gss.split(range(len(ds)), groups=groups))
+            return Subset(ds, idx1), Subset(ds, idx2)
 
-                if d.is_from_block_3:
-                    block_3_indices.append(i)
+        def get_isomer_sets(ds):
+            return set(map(_get_isomer_key, ds))
+
+        if should_split:
+            if block_3_split_mode is None:
+                if self.config.group_by_isomers:
+                    train_r, val_r = split_ratios[0], split_ratios[1]
+                    train_val_ds, self.test_ds = _isomer_group_split(dataset, train_r + val_r)
+
+                    norm_train_r = train_r / (train_r + val_r)
+                    self.train_ds, self.val_ds = _isomer_group_split(train_val_ds, norm_train_r)
                 else:
-                    non_block_3_indices.append(i)
-
-            block_3_subset = Subset(dataset, block_3_indices)
-            non_block_3_subset = Subset(dataset, non_block_3_indices)
-
-            # normalize train/val ratios to sum to 1.0 (since test relies strictly on the block 3 condition)
-            train_r, val_r = split_ratios[0], split_ratios[1]
-            norm_train_r = train_r / (train_r + val_r)
-
-            match block_3_split_mode:
-                case "train":
-                    train_val_pool, test_pool = block_3_subset, non_block_3_subset
-                case "test":
-                    train_val_pool, test_pool = non_block_3_subset, block_3_subset
-                case _:
-                    raise ValueError(f"Invalid `block_3_split_mode` {block_3_split_mode}")
-
-            num_train = int(len(train_val_pool) * norm_train_r)
-            num_val = len(train_val_pool) - num_train
-
-            self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val])
-            self.test_ds = test_pool
-        else:
-            if should_split:
-                self.train_ds, self.val_ds, self.test_ds = split_dataset(
-                    dataset, split_ratios
-                )
+                    self.train_ds, self.val_ds, self.test_ds = split_dataset(
+                        dataset, split_ratios
+                    )
             else:
-                self.train_ds = Subset(dataset, dataset.split_indices["train"])
-                self.val_ds   = Subset(dataset, dataset.split_indices["val"])
-                self.test_ds  = Subset(dataset, dataset.split_indices["test"])
+                block_3_indices = []
+                non_block_3_indices = []
+
+                for i, d in enumerate(dataset):
+                    if d.is_from_block_3:
+                        container = block_3_indices
+                    else:
+                        container = non_block_3_indices
+
+                    container.append(i)
+
+                block_3_subset = Subset(dataset, block_3_indices)
+                non_block_3_subset = Subset(dataset, non_block_3_indices)
+
+                train_r, val_r = split_ratios[0], split_ratios[1]
+                norm_train_r = train_r / (train_r + val_r)
+
+                match block_3_split_mode:
+                    case "train":
+                        train_val_pool, test_pool = block_3_subset, non_block_3_subset
+                    case "test":
+                        train_val_pool, test_pool = non_block_3_subset, block_3_subset
+                    case _:
+                        raise ValueError(f"Invalid `block_3_split_mode` {block_3_split_mode}")
+
+                self.test_ds = test_pool
+
+                if self.config.group_by_isomers:
+                    self.train_ds, self.val_ds = _isomer_group_split(train_val_pool, norm_train_r)
+                else:
+                    num_train = int(len(train_val_pool) * norm_train_r)
+                    num_val = len(train_val_pool) - num_train
+                    self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val])
+        else:
+            self.train_ds = Subset(dataset, dataset.split_indices["train"])
+            self.val_ds   = Subset(dataset, dataset.split_indices["val"])
+            self.test_ds  = Subset(dataset, dataset.split_indices["test"])
+
+        if self.config.group_by_isomers:
+            train_isomers = get_isomer_sets(self.train_ds)
+            val_isomers = get_isomer_sets(self.val_ds)
+            test_isomers = get_isomer_sets(self.test_ds)
+
+            assert train_isomers.isdisjoint(val_isomers), "Data leakage: Train & Val share isomers"
+            assert train_isomers.isdisjoint(test_isomers), "Data leakage: Train & Test share isomers"
+            assert val_isomers.isdisjoint(test_isomers), "Data leakage: Val & Test share isomers"
+
+            print(f"Unique isomers: train: {len(train_isomers)} | val: {len(val_isomers)} | test: {len(test_isomers)}")
 
         print(self.test_ds[0].y)
 

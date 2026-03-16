@@ -11,6 +11,7 @@ main_metric: MAE
 metric_mode: min
 split_ratios: [0.8, 0.1]
 block_3_split_mode: null
+group_by_isomers: false
 additional_loading_params: 
   subset: "cv_vis"
   y_columns: ["HL_Gap"] #HOMO_Energy

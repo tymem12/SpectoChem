@@ -9,6 +9,7 @@ out_channels: 1
 task_type: binary
 split_ratios: [0.8, 0.1]
 block_3_split_mode: null
+group_by_isomers: false
 metric_mode: min
 main_metric: loss  #AUROC  Accuracy
 additional_loading_params: 
