@@ -1,11 +1,13 @@
 from .base import PredictorBase
-from .classifiers import ClassifierBase, LinearClassifier
-from .regressors import RegressorBase, LinearRegressor
+from .mlp_predictor_mixin import MLPPredictorMixin
+from .classifiers import ClassifierBase, MLPClassifier
+from .regressors import RegressorBase, MLPRegressor
 
 __all__ = [
     "PredictorBase",
     "ClassifierBase",
-    "LinearClassifier",
+    "MLPPredictorMixin",
+    "MLPClassifier",
     "RegressorBase",
-    "LinearRegressor"
+    "MLPRegressor"
 ]
