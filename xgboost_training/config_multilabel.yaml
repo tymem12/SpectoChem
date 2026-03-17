@@ -1,0 +1,95 @@
+task: "multilabel"  # Options: "pairs", "binary", "multilabel", "both", "all"
+
+data:
+  csv_path: './data/datasets/TMQM_SPECTO/raw/uvvis_final_40k.csv'
+  test_size: 0.2
+  val_size: 0.1
+  random_state: 42
+  
+  value_caps:
+    lambda_max: 2000
+    f_max: 0.5
+
+multilabel:
+  bucket_size_nm: 320 # 10          
+  min_wavelength: 330         
+  max_wavelength: 650         
+  min_oscillation_strength: 0.01 
+  target_prefix: "abs_bucket" 
+
+binary:
+  min_oscillation_strength: 0.01
+  wavelength_range: [330, 650]
+  target_name: "has_uvvis_peak"
+
+targets:
+  num_pairs: 10
+
+descriptor:
+  type: "soap"  # Options: "soap", "acsf"
+
+soap:
+  r_cut: 5.0
+  n_max: 8
+  l_max: 6
+  allowed_species: ['H', 'C'] #['H', 'C', 'N', 'O', 'Cl', 'F', 'P', 'S', 'B', 'Br', 'Si', 'I', 'Se', 'As']
+
+acsf:
+  r_cut: 6.0
+  allowed_species: ['H', 'C', 'N', 'O', 'Cl', 'F', 'P', 'S', 'B', 'Br', 'Si', 'I', 'Se', 'As']
+
+tuning:
+  pairs:
+    enabled: false
+    n_iter: 20
+    cv: 3
+    scoring: "neg_mean_absolute_error"
+    n_jobs: 1
+    param_distributions:
+      n_estimators: [100, 200, 300, 500]
+      max_depth: [3, 5, 6, 8, 10]
+      learning_rate: [0.01, 0.05, 0.1, 0.2]
+      subsample: [0.6, 0.8, 1.0]
+      colsample_bytree: [0.6, 0.8, 1.0]
+  
+  binary:
+    enabled: false
+    n_iter: 20
+    cv: 3
+    scoring: "roc_auc"
+    n_jobs: 1
+    param_distributions:
+      n_estimators: [100, 200, 300, 500]
+      max_depth: [3, 5, 6, 8, 10]
+      learning_rate: [0.01, 0.05, 0.1, 0.2]
+      subsample: [0.6, 0.8, 1.0]
+      colsample_bytree: [0.6, 0.8, 1.0]
+
+  multilabel:  
+    enabled: false
+    n_iter: 10    
+    cv: 2         
+    scoring: "roc_auc"
+    n_jobs: 1
+    param_distributions:
+      n_estimators: [100, 200]
+      max_depth: [4, 6, 8]
+      learning_rate: [0.05, 0.1]
+      subsample: [0.8, 1.0]
+      colsample_bytree: [0.8, 1.0]
+
+xgboost:
+  n_estimators: 200
+  max_depth: 6
+  learning_rate: 0.05
+  subsample: 0.8
+  colsample_bytree: 0.8
+  tree_method: "hist"
+  device: "cpu" #"cuda"
+  n_jobs: 0
+  random_state: 42
+  verbosity: 0
+
+output:
+  models_dir: './xgboost_models'
+  results_dir: './xgboost_results'
