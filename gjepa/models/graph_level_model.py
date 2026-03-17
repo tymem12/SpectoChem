@@ -182,6 +182,26 @@ class SupervisedGraphLevelGNN(LightningModule):
 
         plot_graph_with_predictions(df, output_params['prediction_type'],save_dir, tuple(output_params['vis_range']))
         print(f"[SupervisedGraphLevelGNN] saved predictions to: {csv_path}")
+        
+        csv_path = os.path.join(save_dir, "mean_and_std_val.csv")
+
+        standarized_lambda_val = StandarizerSingletonLambda.get_values()
+        standarized_f_val = StandarizerSingletonF.get_values()
+
+        data = {}
+
+        if standarized_lambda_val['standarize']:
+            data['lambda_mean'] = standarized_lambda_val['mean_lambda'].item()
+            data['lambda_std'] = standarized_lambda_val['std_lambda'].item()
+
+        if standarized_f_val['standarize']:
+            data['f_mean'] = standarized_f_val['mean_f'].item()
+            data['f_std'] = standarized_f_val['std_f'].item()
+
+        if data:
+            df = pd.DataFrame([data])  # single row
+            df.to_csv(csv_path, index=False)
+        
 
 
     def _get_pooled_z(self, batch: Data) -> Tensor:

@@ -126,11 +126,9 @@ class TMQMGStarDataset(InMemoryDataset):
             f"tmqmg_block3-{self.block_3_only}_"
             f"{pred_type}_{params_str}_"
             f"num_states-{self.num_states}_"
-            # f"vis_range-{self.min_lambda}-{self.max_lambda}_"
             f"filter_type-{self.filter_type}_min_f_val{self.min_f_value}_"
             f"filter_f_value-{self.filter_f_value}_"
-            # f"lanbda_bucket_size-{self.lambda_bucket_size}_"
-            # f"load_representations-{load_reprs_str}_"
+            f"lanbda_bucket_size-{self.lambda_bucket_size}_"
             f"mark-block3-{self.mark_block_3}_"
             f"outlier_str-{self.outlier_strategy}_"
             f"lambda_outlier_thr-{self.lambda_outlier_threshold}_"
@@ -378,17 +376,20 @@ class TMQMGStarDataset(InMemoryDataset):
 
         if self.outlier_strategy == "remove_whole_compounds":
             raise NotImplementedError("Outlier strategy 'remove_whole_compounds' is not implemented yet.")
-        elif self.outlier_strategy == "remove_outlying_transitions" and lambda_outlier_threshold is not None and f_outlier_threshold is not None:
-            removed_outliered_lambdas = [(lam, f) for lam, f in transitions if lam < lambda_outlier_threshold]
-            removed_outliered_f = [(lam, min(f, f_outlier_threshold)) for lam, f in  removed_outliered_lambdas]
-            return removed_outliered_f            
+        elif self.outlier_strategy == "remove_outlying_transitions":
+            return_transitions = transitions
+            if lambda_outlier_threshold is not None:
+                return_transitions = [(lam, f) for lam, f in return_transitions if lam < lambda_outlier_threshold]
+            if f_outlier_threshold is not None:
+                return_transitions = [(lam, min(f, f_outlier_threshold)) for lam, f in return_transitions]
+            return return_transitions
         return transitions
         
     def convert_lambdas_to_ev(self, transitions):
         if not transitions:
             return []
         if self.convert_to_ev and self.prediction_type in {"pairs", 'only_lambdas',
-                                                           'lambda_regressor', 'f_regressor'}:
+                                                           'lambda_regressor'}:
             ev_trainsitions = [(1239.84 / lam, f) for lam, f in transitions]
             return ev_trainsitions
         return transitions
