@@ -127,7 +127,7 @@ class GraphLevelDataModule(GraphDataModule):
             attach_pe_to_dataset_inplace(dataset=dataset, pe_path=self.pos_enc_path)
 
         def _get_isomer_key(d):
-            return tuple(sorted(d.z.tolist()))
+            return str(sorted(d.z.tolist()))
 
         def _isomer_group_split(ds, train_size):
             groups = list(map(_get_isomer_key, ds))
