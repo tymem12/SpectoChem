@@ -47,6 +47,7 @@ class GraphLevelDatasetConfig(GraphDatasetConfig):
     target_standarization: bool | None = None
     block_3_split_mode: Optional[Literal["train", "test"]] = None
     group_by_isomers: bool = False
+    predictor_kwargs: Optional[dict[str, Any]] = None
 
 
 class TrainingConfig(BaseModel, extra=Extra.forbid):

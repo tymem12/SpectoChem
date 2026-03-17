@@ -7,6 +7,7 @@ transforms:
 in_channels: 1
 out_channels: 64
 task_type: multilabel
+predictor_kwargs: null
 split_ratios: [0.8, 0.1]
 block_3_split_mode: null
 group_by_isomers: false
