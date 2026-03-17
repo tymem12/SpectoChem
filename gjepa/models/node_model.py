@@ -7,7 +7,6 @@ from torch_geometric.data import Data
 
 from gjepa.config import ExperimentConfig
 from gjepa.models.encoders import GNNEncoder
-from gjepa.models.predictors import LinearClassifier
 from gjepa.utils.lr_scheduler import LinearWarmupCosineAnnealingLR  # type: ignore
 
 

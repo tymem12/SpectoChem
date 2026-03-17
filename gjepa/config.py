@@ -46,7 +46,7 @@ class GraphLevelDatasetConfig(GraphDatasetConfig):
     additional_loading_params: dict[str, Any] | None = None
     target_standarization: bool | None = None
     block_3_split_mode: Optional[Literal["train", "test"]]
-
+    predictor_kwargs: Optional[dict[str, Any]] = None
 
 
 class TrainingConfig(BaseModel, extra=Extra.forbid):
