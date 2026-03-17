@@ -23,5 +23,5 @@ additional_loading_params:
   sort_by_max_f: false
   standarize_lambda: true
   standarize_f: false
-  load_representations: data/precomputed_embeddings/TMQM_SPECTO/binary_classification/UMA
+  load_representations: null
   
