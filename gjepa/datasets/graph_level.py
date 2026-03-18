@@ -165,7 +165,7 @@ class GraphLevelDataModule(GraphDataModule):
 
         print(self.test_ds[0].y)
 
-        self._standarize_output(type=self.config.additional_loading_params['prediction_type'],
+        self._standarize_output(output_type=self.config.additional_loading_params['prediction_type'],
                                 standarize_lambda=self.config.additional_loading_params['standarize_lambda'],
                                 standarize_f=self.config.additional_loading_params['standarize_f'])
         print(f"Loaded dataset '{name}' with {len(dataset)} graphs.")
@@ -173,11 +173,11 @@ class GraphLevelDataModule(GraphDataModule):
         print(f'len of val is {len(self.val_ds)}')
         print(f'len of test is {len(self.test_ds)}')
 
-    def _standarize_output(self, type: str, standarize_lambda: bool, standarize_f: bool):
+    def _standarize_output(self, output_type: str, standarize_lambda: bool, standarize_f: bool):
         if self.train_ds is None:
             raise RuntimeError("train_ds is not initialized. Call setup() before _standarize_output().")
 
-        if type == "pairs":
+        if output_type == "pairs":
             if not standarize_lambda and not standarize_f:
                 return  # no-op if both False
 
@@ -248,7 +248,7 @@ class GraphLevelDataModule(GraphDataModule):
             self.test_ds  = _standardize_dataset(self.test_ds)
             return
 
-        if type == "vector":
+        if output_type == "vector":
             if not standarize_f:
                 return
             f_vals = []
@@ -292,7 +292,7 @@ class GraphLevelDataModule(GraphDataModule):
             self.test_ds = _standardize_dataset(self.test_ds)
             return
 
-        if type == "only_lambdas":
+        if output_type == "only_lambdas":
             if not standarize_lambda:
                 return
 
@@ -333,8 +333,56 @@ class GraphLevelDataModule(GraphDataModule):
             self.val_ds = _standardize_dataset(self.val_ds)
             self.test_ds = _standardize_dataset(self.test_ds)
             return
-        if type in ["binary_classification",'binary_vector_multiclass', 'binary_vector_multilabel']:
+        if output_type == "f_regressor" or output_type == "lambda_regressor":
+            
+            if not standarize_f and not standarize_lambda:
+                print("No standardization applied since both standarize_f and standarize_lambda are False.")
+                return
+            if not standarize_f and output_type == "f_regressor":
+                print("No standardization applied to f values since standarize_f is False.")
+                return
+            if not standarize_lambda and output_type == "lambda_regressor":
+                print("No standardization applied to lambda values since standarize_lambda is False.")
+                return
+
+            vals = []
+
+            for data_element in self.train_ds:
+                y = data_element.y.view(-1)
+                for val in y:
+                    vals.append(val.item())
+
+            if len(vals) == 0:
+                raise RuntimeError("No f values found in train set for 'f_regressor' standardization.")
+
+            values_tensor = torch.tensor(vals, dtype=torch.float32)
+            val_mean = values_tensor.mean()
+            val_std = values_tensor.std(unbiased=False)
+
+            def _standardize_dataset(ds):
+                if ds is None:
+                    return None
+                standardized = []
+                for i in range(len(ds)):
+                    data = ds[i].clone()
+                    y = data.y.view(-1).clone()
+                    for idx in range(y.size(0)):
+                        y[idx] = (y[idx] - val_mean) / (val_std + 1e-8)
+
+                    data.y = y.view_as(data.y)
+                    standardized.append(data)
+                return standardized
+            self.train_ds = _standardize_dataset(self.train_ds)
+            self.val_ds = _standardize_dataset(self.val_ds)
+            self.test_ds = _standardize_dataset(self.test_ds)
+            if output_type == "f_regressor" and standarize_f:
+                StandarizerSingletonF.set_values(mean_f=val_mean, std_f=val_std)
+            elif output_type == "lambda_regressor" and standarize_lambda:
+                StandarizerSingletonLambda.set_values(mean_lambda=val_mean, std_lambda=val_std)
+            return
+        if output_type in ["binary_classification",'binary_vector_multiclass', 'binary_vector_multilabel']:
             print('SHAPE: ', self.train_ds[0].y.shape)
+            print('VALUES: ', self.train_ds[0].y)
             return
         else:
             raise ValueError(f"Unknown standarization type: {type!r}. Expected 'pairs', 'vector', or 'only_lambdas'.")
