@@ -6,30 +6,29 @@ transforms:
     cutoff: 5.0
 in_channels: 1
 out_channels: 1
-task_type: binary
+task_type: regression
 predictor_kwargs:
   hidden_channels: null
   activation: null
   dropout: null
 split_ratios: [0.8, 0.1]
 block_3_split_mode: null
-group_by_isomers: false
 metric_mode: min
-main_metric: loss  #AUROC  Accuracy
+main_metric: MAE
 additional_loading_params: 
-  prediction_type: binary_classification
-  num_states: 1
+  prediction_type: lambda_regressor
+  num_states: 0 #0-9
   vis_range: [330, 650]
   block_3_only: True
-  filter_type: all_samples    # all_samples
+  filter_type: all_samples
   filter_f_value: -1
-  min_f_value: 0.01  # 0.05
+  min_f_value: -1
   sort_by_max_f: false
-  standarize_lambda: false
+  standarize_lambda: true  #true false
   standarize_f: false
   load_representations: ''
-  outlier_strategy: null
-  convert_to_ev: false
-  f_outlier_threshold: null
-  lambda_outlier_threshold: null
+  outlier_strategy: remove_outlying_transitions  #null, remove_outlying_transitions
+  convert_to_ev: true  #true false
+  f_outlier_threshold: 0.5 # 0.5 null
+  lambda_outlier_threshold: 1500  #null 1500
   

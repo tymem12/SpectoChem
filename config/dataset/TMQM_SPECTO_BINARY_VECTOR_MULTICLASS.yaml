@@ -7,7 +7,10 @@ transforms:
 in_channels: 1
 out_channels: 64
 task_type: multiclass
-predictor_kwargs: null
+predictor_kwargs:
+  hidden_channels: null
+  activation: null
+  dropout: null
 split_ratios: [0.8, 0.1]
 block_3_split_mode: null
 group_by_isomers: false
@@ -25,6 +28,10 @@ additional_loading_params:
   standarize_lambda: false
   standarize_f: false
   lambda_bucket_size: 5
-  load_representations: null
+  load_representations: ''
+  outlier_strategy: null
+  convert_to_ev: false
+  f_outlier_threshold: null
+  lambda_outlier_threshold: null
 
 

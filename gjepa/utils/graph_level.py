@@ -1,3 +1,5 @@
+from typing import Optional
+
 from rdkit import Chem
 from rdkit.Chem import rdchem
 import torch
@@ -112,11 +114,13 @@ def calc_edge_weight(pos: torch.Tensor, edge_index: torch.Tensor) -> torch.Tenso
     return edge_weight
 
 
-def split_dataset(dataset, split_ratios, seed=2137):
+def split_dataset(dataset, split_ratios, seed: Optional[int | torch.Generator] = 2137):
 
     test_ratio = round(1 - sum(split_ratios), 10)
 
     if getattr(dataset, "group_attr", None) is not None:
+        assert isinstance(seed, int)
+
         group_attr = dataset.group_attr
         rng = random.Random(seed)
 
@@ -153,7 +157,10 @@ def split_dataset(dataset, split_ratios, seed=2137):
         )
 
     else:
+        assert seed is None or isinstance(seed, torch.Generator)
+
         return random_split(
             dataset,
-            [*split_ratios, test_ratio]
+            [*split_ratios, test_ratio],
+            seed
         )

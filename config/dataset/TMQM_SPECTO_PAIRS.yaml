@@ -7,7 +7,10 @@ transforms:
 in_channels: 1
 out_channels: 2
 task_type: multiregression
-predictor_kwargs: null
+predictor_kwargs:
+  hidden_channels: null
+  activation: null
+  dropout: null
 split_ratios: [0.8, 0.1]
 block_3_split_mode: null
 group_by_isomers: false
@@ -25,6 +28,9 @@ additional_loading_params:
   standarize_lambda: true
   standarize_f: true
   load_representations: null
-
+  outlier_strategy: null
+  convert_to_ev: false
+  f_outlier_threshold: null
+  lambda_outlier_threshold: null
 
 
