@@ -1,0 +1,6 @@
+gnn_cls: gjepa.models.backbones.GATEncoder
+hidden_channels: 128
+num_layers: 3
+dropout: 0
+heads: 4
+out_dim: ${.hidden_channels}

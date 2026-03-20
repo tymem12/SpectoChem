@@ -1,0 +1,5 @@
+gnn_cls: gjepa.models.backbones.GCNEncoder
+hidden_channels: 128
+num_layers: 3
+dropout: 0
+out_dim: ${.hidden_channels}

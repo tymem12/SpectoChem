@@ -10,6 +10,9 @@ from .transformer_attention_pool import TransformerAttentionPoolModel
 from .invariant_projection import InvariantProjectionEncoder
 from .geometric_gating import GeometricGatingEncoder
 from .moe import MoESchNetEncoder
+from .gcn import GCNEncoder
+from .gin import GINEncoder
+from .gat import GATEncoder
 
 __all__ = [
     "CustomGNN",
@@ -27,4 +30,7 @@ __all__ = [
     "InvariantProjectionEncoder",
     "GeometricGatingEncoder",
     "MoESchNetEncoder",
+    "GCNEncoder",
+    "GINEncoder",
+    "GATEncoder"
 ]
