@@ -13,6 +13,7 @@ predictor_kwargs:
   dropout: null
 split_ratios: [0.8, 0.1]
 block_3_split_mode: null
+group_by_isomers: false
 metric_mode: max
 main_metric: F1
 additional_loading_params: 

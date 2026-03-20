@@ -45,7 +45,8 @@ class GraphLevelDatasetConfig(GraphDatasetConfig):
     split_ratios: tuple[float, float] | None
     additional_loading_params: dict[str, Any] | None = None
     target_standarization: bool | None = None
-    block_3_split_mode: Optional[Literal["train", "test"]]
+    block_3_split_mode: Optional[Literal["train", "test"]] = None
+    group_by_isomers: bool = False
     predictor_kwargs: Optional[dict[str, Any]] = None
 
 
