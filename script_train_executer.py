@@ -78,7 +78,7 @@ def run_cmd(cmd, log_info):
 def run_binary(model_name, exp_param_str, backbone_args):
     for min_f_value in [0.01, 0.05]:
         for metric, metric_mode in [('loss', 'min'), ('F1', 'max')]:
-            experiment_path = f"RW/supervised/{data_time}/binary_classification/{model_name}/{exp_param_str}/UMA_full_embedding/min_f_value_{min_f_value}/metric_{metric}/330-650/results"
+            experiment_path = f"supervised/{data_time}/binary_classification/{model_name}/{exp_param_str}/UMA_full_embedding/min_f_value_{min_f_value}/metric_{metric}/330-650/results"
             
             cmd = [
                 "python", "experiments/scripts/train_graph_level.py",
@@ -101,7 +101,7 @@ def run_vector(model_name, exp_param_str, backbone_args, is_multilabel=False):
     for min_f_value in [0.01, 0.05]:
         for bucket_size in [1, 5, 10]:
             for metric, metric_mode in [('loss', 'min'), ('F1', 'max')]:
-                experiment_path = f"RW/supervised/{data_time}/{folder_prefix}/{model_name}/{exp_param_str}/UMA_full_embedding/min_f_value_{min_f_value}/lambda_bucket_size_{bucket_size}/metric_{metric}/330-650/results"
+                experiment_path = f"supervised/{data_time}/{folder_prefix}/{model_name}/{exp_param_str}/UMA_full_embedding/min_f_value_{min_f_value}/lambda_bucket_size_{bucket_size}/metric_{metric}/330-650/results"
 
                 cmd = [
                     "python", "experiments/scripts/train_graph_level.py",
@@ -125,7 +125,7 @@ def run_lambda_1(model_name, exp_param_str, backbone_args, is_pairs=True, min_st
     exp_type_log = f"PAIRS (lambda_1, min_states={min_states})" if is_pairs else "ONLY_LAMBDAS (lambda_1)"
 
     states_path_part = f"/min_states_{min_states}" if is_pairs else ""
-    experiment_path = f"RW/supervised/{data_time}/{folder_prefix}/{model_name}/{exp_param_str}/UMA_full_embedding/lambda_1{states_path_part}/330-650/results"
+    experiment_path = f"supervised/{data_time}/{folder_prefix}/{model_name}/{exp_param_str}/UMA_full_embedding/lambda_1{states_path_part}/330-650/results"
     
     cmd = [
         "python", "experiments/scripts/train_graph_level.py",
@@ -150,7 +150,7 @@ def run_one_visible(model_name, exp_param_str, backbone_args, is_pairs=True, min
 
     for min_f_value in [0.01, 0.05]:
         states_suffix = f"_states_{min_states}" if is_pairs else ""
-        experiment_path = f"RW/supervised/{data_time}/{folder_prefix}/{model_name}/{exp_param_str}/UMA_full_embedding/like_multiclass_{min_f_value}{states_suffix}/one_visible_lambda/330-650/results"
+        experiment_path = f"supervised/{data_time}/{folder_prefix}/{model_name}/{exp_param_str}/UMA_full_embedding/like_multiclass_{min_f_value}{states_suffix}/one_visible_lambda/330-650/results"
 
         cmd = [
             "python", "experiments/scripts/train_graph_level.py",
@@ -176,7 +176,7 @@ def run_individual_variable_pairs(model_name, exp_param_str, backbone_args, outl
     min_f_value = -1
 
     for num_pair in range(1, num_pairs + 1):
-        experiment_path = f"RW/supervised/{data_time}/individual_pairs_{pair_value_to_predict}/{model_name}/{exp_param_str}/UMA_full_embedding/outliers-{outliers}/num_pair_{num_pair}/330-650/results"
+        experiment_path = f"supervised/{data_time}/individual_pairs_{pair_value_to_predict}/{model_name}/{exp_param_str}/UMA_full_embedding/outliers-{outliers}/num_pair_{num_pair}/330-650/results"
 
         cmd = [
             "python", "experiments/scripts/train_graph_level.py",
