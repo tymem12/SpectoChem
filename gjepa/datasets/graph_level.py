@@ -47,9 +47,11 @@ class GraphLevelDataModule(GraphDataModule):
         self,
         dataset_config: GraphLevelDatasetConfig,
         batch_size: int,
+        random_seed: Optional[int] = None,
         pos_enc_path: Path = None
     ):
         super().__init__(dataset_config, batch_size)
+
         self.config = dataset_config
         self.batch_size = batch_size
         self.pos_enc_path = pos_enc_path
@@ -60,6 +62,16 @@ class GraphLevelDataModule(GraphDataModule):
 
         self.y_mean: torch.Tensor | None = None
         self.y_std: torch.Tensor | None = None
+
+        if random_seed is None:
+            random_seed = torch.initial_seed()
+
+        self.random_seed = random_seed
+        self.generator = torch.Generator()
+
+    def reset_generator(self) -> torch.Generator:
+        self.generator.manual_seed(self.random_seed)
+        return self.generator
 
     def setup(self, stage: str) -> None:
         # torch trainer calls `setup()` again with `stage="fit` during testing, which causes setting
@@ -151,12 +163,12 @@ class GraphLevelDataModule(GraphDataModule):
             num_train = int(len(train_val_pool) * norm_train_r)
             num_val = len(train_val_pool) - num_train
 
-            self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val])
+            self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val], self.reset_generator())
             self.test_ds = test_pool
         else:
             if should_split:
                 self.train_ds, self.val_ds, self.test_ds = split_dataset(
-                    dataset, split_ratios
+                    dataset, split_ratios, self.reset_generator()
                 )
             else:
                 self.train_ds = Subset(dataset, dataset.split_indices["train"])
