@@ -71,7 +71,7 @@ class GraphLevelDataModule(GraphDataModule):
         self.random_seed = random_seed
         self.generator = torch.Generator()
 
-    def reset_generator(self) -> torch.Generator:
+    def reseed_generator(self) -> torch.Generator:
         self.generator.manual_seed(self.random_seed)
         return self.generator
 
@@ -143,7 +143,7 @@ class GraphLevelDataModule(GraphDataModule):
 
         def _isomer_group_split(ds, train_size):
             groups = list(map(_get_isomer_key, ds))
-            gss = GroupShuffleSplit(n_splits=1, train_size=train_size)
+            gss = GroupShuffleSplit(n_splits=1, train_size=train_size, random_state=self.random_seed)
             idx1, idx2 = next(gss.split(range(len(ds)), groups=groups))
             return Subset(ds, idx1), Subset(ds, idx2)
 
@@ -160,7 +160,7 @@ class GraphLevelDataModule(GraphDataModule):
                     self.train_ds, self.val_ds = _isomer_group_split(train_val_ds, norm_train_r)
                 else:
                     self.train_ds, self.val_ds, self.test_ds = split_dataset(
-                        dataset, split_ratios
+                        dataset, split_ratios, self.reseed_generator()
                     )
             else:
                 block_3_indices = []
@@ -195,7 +195,7 @@ class GraphLevelDataModule(GraphDataModule):
                 else:
                     num_train = int(len(train_val_pool) * norm_train_r)
                     num_val = len(train_val_pool) - num_train
-                    self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val])
+                    self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val], self.reseed_generator())
         else:
             self.train_ds = Subset(dataset, dataset.split_indices["train"])
             self.val_ds   = Subset(dataset, dataset.split_indices["val"])
