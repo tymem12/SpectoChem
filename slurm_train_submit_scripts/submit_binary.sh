@@ -11,7 +11,6 @@ for model in "${MODELS[@]}"; do
         
         echo "==== CONFIG: $model | block=$block ===="
         
-        # 🔁 najpierw wszystkie seedy
         for seed in "${SEEDS[@]}"; do
             
             echo "Submitting: $model | binary | block=$block | seed=$seed"

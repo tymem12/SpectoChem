@@ -4,8 +4,7 @@ import datetime
 import argparse
 import sys
 
-# --- CONFIGURATION ---
-LAST_EXP = -1
+
 
 # 1. Dynamic Timestamp
 now = datetime.datetime.now()
@@ -13,7 +12,7 @@ data_time = now.strftime("%Y-%m-%d_%H.%M.%S")
 int_inter = 0  # Global counter
 
 
-# --- UTILITY FUNCTIONS ---
+
 def get_config_string(config):
     """Creates a short folder string representation of the config."""
     parts = []
@@ -49,6 +48,8 @@ def run_binary(model_name, seed, block_3_split):
             # experiment_path = f"supervised/{data_time}/binary_classification/{model_name}/{exp_param_str}/UMA_full_embedding/min_f_value_{min_f_value}/metric_{metric}/330-650/results"
             experiment_path = f"supervised/{seed}/binary_classification/{model_name}/block_3_{block_3_split}/results"
             block_3_only = block_3_split == "none"
+            block_3_split = block_3_split if block_3_split != "none" else 'null'
+
             
             cmd = [
                 "python", "experiments/scripts/train_graph_level.py",
@@ -70,6 +71,7 @@ def run_lambda_regression(model_name, seed,
                           block_3_split = 'test'):
     exp_type_log = f"LAMBDA_REGRESSION"
     block_3_only = block_3_split == "none"
+    block_3_split = block_3_split if block_3_split != "none" else 'null'
     min_f_value = -1
     outlier_strategy = 'remove_outlying_transition'
     lambda_outlier_threshold = 1500
@@ -108,6 +110,8 @@ def run_lambda_regression(model_name, seed,
 def run_f_regression(model_name, seed, standarization, block_3_split):
     exp_type_log = f"F_REGRESSION"
     block_3_only = block_3_split == "none"
+    block_3_split = block_3_split if block_3_split != "none" else 'null'
+
     min_f_value = -1
     outlier_strategy = 'remove_outlying_transition'
     lambda_outlier_threshold = 1500
