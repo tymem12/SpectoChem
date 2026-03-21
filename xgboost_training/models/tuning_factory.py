@@ -126,12 +126,7 @@ def setup_tuning_search(model_class, param_distributions, tuning_config, base_pa
     n_jobs = tuning_config.get('n_jobs', -1)
     scoring = tuning_config.get('scoring', None)
     
-    if isinstance(model_class, type):
-        is_pipeline = False
-        base_estimator = model_class(**base_params)
-    else:
-        is_pipeline = True
-        base_estimator = model_class
+    base_estimator = model_class
     
     if use_gpu and model_type in ['random_forest', 'svm', 'logistic_regression']:
         try:
