@@ -13,7 +13,7 @@ int_inter = 0  # Global counter
 
 LAST_EXP = -1
 def get_prediction_head_params():
-    hidden_channels = 256
+    hidden_channels = [256]
     activation = 'silu'
     dropout = 0.2
     return hidden_channels, activation, dropout
