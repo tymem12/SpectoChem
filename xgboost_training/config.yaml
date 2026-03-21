@@ -1,0 +1,236 @@
+task: "pairs"
+model_type: "logistic_regression"
+
+random_state: 42
+
+experiments:
+  - task: "binary"
+    model_type: "logistic_regression"
+    descriptor_type: "soap"
+    remove_outlier: false
+    tune: tune
+    random_state: 42  
+
+gpu:
+  use_if_available: true
+
+custom_tasks:
+  pairs: true
+  binary: true
+  binary_pairs: true
+  multilabel: false
+
+data:
+  csv_path: './data/datasets/TMQM_SPECTO/raw/uvvis_final_40k.csv'
+  test_size: 0.1
+  val_size: 0.1
+  value_caps:
+    lambda_max: 2000
+    f_max: 0.5
+
+binary_pairs:
+  min_oscillation_strength: 0.01
+  target_prefix: "f_binary"
+
+binary:
+  min_oscillation_strength: 0.010000000002
+  wavelength_range: [330, 650]
+  target_name: "has_uvvis_peak"
+
+multilabel:
+  bucket_size_nm: 10
+  min_wavelength: 330
+  max_wavelength: 650
+  min_oscillation_strength: 0.01
+  target_prefix: "abs_bucket"
+
+targets:
+  num_pairs: 10
+
+descriptor:
+  type: "soap"
+
+soap:
+  r_cut: 5.0
+  n_max: 8
+  l_max: 6
+  allowed_species: ['H', 'C', 'N', 'O', 'Cl', 'F', 'P', 'S', 'B', 'Br', 'Si', 'I', 'Se', 'As']
+
+acsf:
+  r_cut: 6.0
+  allowed_species: ['H', 'C', 'N', 'O', 'Cl', 'F', 'P', 'S', 'B', 'Br', 'Si', 'I', 'Se', 'As']
+
+tuning:
+  xgboost:
+    enabled: false
+    n_iter: 20
+    cv: 2
+    n_jobs: 1
+    param_distributions:
+      n_estimators: [100, 200, 300, 500]
+      max_depth: [3, 5, 6, 8, 10]
+      learning_rate: [0.01, 0.05, 0.1, 0.2]
+      subsample: [0.6, 0.8, 1.0]
+      colsample_bytree: [0.6, 0.8, 1.0]
+      gamma: [0, 0.1, 0.2, 0.5]
+      reg_alpha: [0, 0.1, 1, 10]
+      reg_lambda: [1, 1.5, 2, 10]
+      min_child_weight: [1, 3, 5, 7] 
+
+  random_forest:
+    enabled: false
+    n_iter: 20
+    cv: 2
+    n_jobs: 1
+    param_distributions:
+      n_estimators: [100, 200, 300, 500]
+      max_depth: [5, 10, 15, 20, null]
+      min_samples_split: [2, 5, 10]
+      min_samples_leaf: [1, 2, 4]
+      max_features: ["sqrt", "log2", null]
+      bootstrap: [true, false]
+
+  svm:
+    enabled: false
+    n_iter: 20
+    cv: 2
+    n_jobs: 1
+    param_distributions:
+      C: [0.1, 1, 10, 100, 1000]
+      gamma: ["scale", "auto", 0.001, 0.01, 0.1, 1]
+      kernel: ["rbf", "poly", "sigmoid"]
+      degree: [2, 3, 4]
+      coef0: [0.0, 0.1, 0.5]
+
+  logistic_regression:
+    enabled: false
+    n_iter: 20
+    cv: 2
+    param_distributions:
+      # For REGRESSION tasks (LinearRegression)
+      regression:
+        positive: [true, false]
+        fit_intercept: [true, false]
+      
+      # For CLASSIFICATION tasks (LogisticRegression)
+      classification:
+        C: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+        max_iter: [100, 500, 1000]
+
+  mlp:
+    enabled: false
+    n_iter: 20
+    cv: 2
+    param_distributions:
+      hidden_layer_sizes: 
+        - [32]
+        - [64]
+        - [128]
+        - [32, 32]
+        - [64, 64]
+      activation: ["relu", "tanh"]
+      alpha: [0.0001, 0.001, 0.01]
+      learning_rate_init: [0.001, 0.01]
+      solver: ["adam"]
+      early_stopping: [true]
+
+  pairs:
+    enabled: false  
+    n_iter: 4
+    cv: 2
+    scoring: "neg_mean_absolute_error"
+    n_jobs: 1
+    param_distributions:
+      positive: [true, false]
+      fit_intercept: [true, false]
+
+  binary:
+    enabled: false
+    n_iter: 20
+    cv: 2
+    scoring: "roc_auc"
+    n_jobs: 1
+    param_distributions:
+      n_estimators: [100, 200, 300, 500]
+      max_depth: [3, 5, 6, 8, 10]
+
+  binary_pairs:
+    enabled: false
+    n_iter: 20
+    cv: 2
+    scoring: "roc_auc"
+    n_jobs: 1
+    param_distributions:
+      n_estimators: [100, 200, 300, 500]
+      max_depth: [3, 5, 6, 8, 10]
+
+  multilabel:
+    enabled: false
+    n_iter: 10
+    cv: 2
+    scoring: "roc_auc"
+    n_jobs: 1
+    param_distributions:
+      n_estimators: [100, 200]
+      max_depth: [4, 6, 8]
+
+xgboost:
+  n_estimators: 200
+  max_depth: 6
+  learning_rate: 0.05
+  subsample: 0.8
+  colsample_bytree: 0.8
+  tree_method: "hist"
+  device: "cuda"
+  n_jobs: 1
+  verbosity: 0
+  min_child_weight: 1  
+
+random_forest:
+  n_estimators: 200
+  max_depth: 10
+  min_samples_split: 2
+  min_samples_leaf: 1
+  n_jobs: 1
+
+svm:
+  C: 1.0
+  kernel: "rbf"
+  gamma: "scale"
+
+hydra_config_dir: ../../config
+
+task_to_hydra_exp:
+  binary: '+exp=TMQM_SPECTO_BINARY'
+  pairs: '+exp=TMQM_SPECTO_PAIRS'
+  binary-pairs: '+exp=TMQM_SPECTO_PAIRS'
+  multilabel: '+exp=TMQM_SPECTO_BINARY_VECTOR_MULTILABEL'
+
+dummy:
+  strategy: "mean"
+
+logistic_regression:
+  C: 1.0
+  max_iter: 1000
+  n_jobs: 1
+  positive: false
+  fit_intercept: true
+
+mlp:
+  hidden_layer_sizes: [128, 64]
+  activation: "relu"
+  solver: "adam"
+  alpha: 0.0001
+  batch_size: "auto"
+  learning_rate: "constant"
+  learning_rate_init: 0.001
+  max_iter: 500
+  shuffle: true
+  early_stopping: true
+  validation_fraction: 0.1
+  n_iter_no_change: 10
+  verbose: false
+
+output:
+  models_dir: './xgboost_models'
+  results_dir: './xgboost_results'

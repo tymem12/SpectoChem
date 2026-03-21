@@ -31,5 +31,5 @@ class GATEncoder(nn.Module):
 
     def forward(self, batch: Data):
         x = self.embedding(batch.z)
-        h = self.gnn(x, batch.edge_index)
+        h = self.gnn(x, batch.edge_index, edge_weight=batch.edge_weight)
         return h

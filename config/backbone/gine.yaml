@@ -1,4 +1,4 @@
-gnn_cls: gjepa.models.backbones.GINEncoder
+gnn_cls: gjepa.models.backbones.GINEEncoder
 hidden_channels: 128
 num_layers: 3
 dropout: 0
