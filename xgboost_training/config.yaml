@@ -4,11 +4,11 @@ model_type: "logistic_regression"
 random_state: 42
 
 experiments:
-  - task: "pairs"
+  - task: "binary"
     model_type: "logistic_regression"
     descriptor_type: "soap"
     remove_outlier: false
-    tune: false
+    tune: tune
     random_state: 42  
 
 gpu:
@@ -81,7 +81,7 @@ tuning:
     enabled: false
     n_iter: 20
     cv: 2
-    n_jobs: -1
+    n_jobs: 1
     param_distributions:
       n_estimators: [100, 200, 300, 500]
       max_depth: [5, 10, 15, 20, null]
@@ -94,7 +94,7 @@ tuning:
     enabled: false
     n_iter: 20
     cv: 2
-    n_jobs: -1
+    n_jobs: 1
     param_distributions:
       C: [0.1, 1, 10, 100, 1000]
       gamma: ["scale", "auto", 0.001, 0.01, 0.1, 1]
@@ -182,7 +182,7 @@ xgboost:
   colsample_bytree: 0.8
   tree_method: "hist"
   device: "cuda"
-  n_jobs: 0
+  n_jobs: 1
   verbosity: 0
   min_child_weight: 1  
 
@@ -191,7 +191,7 @@ random_forest:
   max_depth: 10
   min_samples_split: 2
   min_samples_leaf: 1
-  n_jobs: -1
+  n_jobs: 1
 
 svm:
   C: 1.0
@@ -212,7 +212,7 @@ dummy:
 logistic_regression:
   C: 1.0
   max_iter: 1000
-  n_jobs: -1
+  n_jobs: 1
   positive: false
   fit_intercept: true
 

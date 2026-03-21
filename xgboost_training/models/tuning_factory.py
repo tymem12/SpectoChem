@@ -74,15 +74,18 @@ def convert_param_distributions_for_cuml(param_distributions, model_type):
     cuml_params = {}
     
     for param_name, values in param_distributions.items():
+        # Handle both 'param' and 'model__param' formats
+        clean_name = param_name.replace('model__', '')
+        
         if model_type == 'random_forest':
-            if param_name in ['max_features', 'bootstrap', 'min_samples_split', 'min_samples_leaf']:
+            if clean_name in ['max_features', 'bootstrap', 'min_samples_split', 'min_samples_leaf']:
                 continue  
             cuml_params[param_name] = values
             
         elif model_type == 'svm':
-            if param_name == 'kernel':
+            if clean_name == 'kernel':
                 cuml_params[param_name] = [v for v in values if v in ['rbf', 'poly', 'sigmoid']]
-            elif param_name == 'gamma':
+            elif clean_name == 'gamma':
                 numeric_gammas = [v for v in values if isinstance(v, (int, float))]
                 if numeric_gammas:
                     cuml_params[param_name] = numeric_gammas
@@ -90,7 +93,7 @@ def convert_param_distributions_for_cuml(param_distributions, model_type):
                 cuml_params[param_name] = values
                 
         elif model_type == 'logistic_regression':
-            if param_name in ['max_iter', 'C', 'tol']:
+            if clean_name in ['max_iter', 'C', 'tol']:
                 cuml_params[param_name] = values
             
         else:
@@ -106,10 +109,10 @@ def setup_tuning_search(model_class, param_distributions, tuning_config, base_pa
     Uses cuML for GPU-accelerated tuning when available and appropriate.
     
     Args:
-        model_class: Model class to tune
+        model_class: Model class to tune OR an already instantiated Pipeline
         param_distributions: Parameter distributions
         tuning_config: Tuning configuration dictionary
-        base_params: Base model parameters
+        base_params: Base model parameters (used only if model_class is a class)
         random_state: Random state for reproducibility
         use_gpu: Whether to use GPU for tuning
         model_type: Type of model (xgboost, random_forest, svm, etc.)
@@ -123,6 +126,13 @@ def setup_tuning_search(model_class, param_distributions, tuning_config, base_pa
     n_jobs = tuning_config.get('n_jobs', -1)
     scoring = tuning_config.get('scoring', None)
     
+    if isinstance(model_class, type):
+        is_pipeline = False
+        base_estimator = model_class(**base_params)
+    else:
+        is_pipeline = True
+        base_estimator = model_class
+    
     if use_gpu and model_type in ['random_forest', 'svm', 'logistic_regression']:
         try:
             from cuml.model_selection import RandomizedSearchCV as cuMLRandomizedSearchCV
@@ -132,10 +142,8 @@ def setup_tuning_search(model_class, param_distributions, tuning_config, base_pa
             if cuml_param_dist: 
                 print(f"  Using cuML RandomizedSearchCV on GPU for {model_type}")
                 
-                base_model = model_class(**base_params)
-                
                 search = cuMLRandomizedSearchCV(
-                    estimator=base_model,
+                    estimator=base_estimator,
                     param_distributions=cuml_param_dist,
                     n_iter=n_iter,
                     cv=cv,
@@ -159,10 +167,8 @@ def setup_tuning_search(model_class, param_distributions, tuning_config, base_pa
     if n_jobs == -1:
         n_jobs = min(4, os.cpu_count() or 1)  
     
-    base_model = model_class(**base_params)
-    
     search = RandomizedSearchCV(
-        estimator=base_model,
+        estimator=base_estimator,
         param_distributions=param_distributions,
         n_iter=n_iter,
         cv=cv,

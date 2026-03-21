@@ -1,4 +1,5 @@
 import os
+from gjepa.utils import config
 import numpy as np
 import pandas as pd
 from typing import Optional, List, Set, Dict, Any, Tuple
@@ -6,6 +7,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
 from torch_geometric.data import Data
+from lightning_fabric import seed_everything
 
 from data.value_capper import ValueCapper
 from data.target_generator import TargetGenerator
@@ -159,6 +161,7 @@ class DatasetReaderFromGraphModule:
             else:
                 dataset_config = cfg.dataset
 
+            seed_everything(cfg.training.random_seed)
             datamodule = GraphLevelDataModule(
                 dataset_config=dataset_config,
                 batch_size=cfg.training.batch_size if hasattr(cfg, 'training') else 32,

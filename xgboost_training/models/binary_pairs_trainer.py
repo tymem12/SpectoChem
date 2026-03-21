@@ -2,6 +2,7 @@ import os
 import numpy as np
 import joblib
 from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 from models.model_factory import get_model, get_model_params, get_cpu_fallback_model, check_gpu_available
@@ -20,7 +21,6 @@ class BinaryPairsTrainer:
             'metrics': {},
             'predictions': {},
             'probabilities': {},
-            'scalers': {}
         }
         os.makedirs(self.output_dir, exist_ok=True)
     
@@ -28,28 +28,22 @@ class BinaryPairsTrainer:
         X_train, X_test, X_val = data_reader.get_feature_splits(descriptors)
         binary_f_columns = data_reader.get_binary_f_columns()
         
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
-        X_val_scaled = scaler.transform(X_val)
-        
-        print(f"\\nFeature shape: {X_train_scaled.shape}")
+        print(f"\\nFeature shape: {X_train.shape}")
         print(f"Model type: {self.model_type}")
         print(f"Random state: {self.random_state}")
         print(f"Training {len(binary_f_columns)} binary F classifiers...")
         
-        X_train_val = np.vstack([X_train_scaled, X_val_scaled])
+        # Combine train+val for final training (raw, unscaled)
+        X_train_val = np.vstack([X_train, X_val])
         
         for idx, f_col in enumerate(binary_f_columns):
             self._train_f_classifier(idx, f_col, data_reader, 
-                                     X_train_val, X_test_scaled, X_val_scaled, 
-                                     scaler, len(binary_f_columns))
+                                     X_train_val, X_test, X_train, X_val, len(binary_f_columns))
         
         return self.results
     
     def _train_f_classifier(self, idx, f_col, data_reader, 
-                           X_train_val, X_test_scaled, X_val_scaled, 
-                           feature_scaler, total_classifiers):
+                           X_train_val, X_test, X_train_raw, X_val_raw, total_classifiers):
         print(f"\\n{'='*70}")
         print(f"Training Binary F Classifier {idx+1}/{total_classifiers}: {f_col}")
         print(f"{'='*70}")
@@ -64,58 +58,83 @@ class BinaryPairsTrainer:
         print(f"Positive class: {y_train_val.sum()} ({100*y_train_val.sum()/len(y_train_val):.1f}%)")
         
         ModelClass, is_cuml = get_model(self.config, task_type='classification')
-        params = get_model_params(self.config, task_type='classification')
+        base_params = get_model_params(self.config, task_type='classification')
         
         if is_tuning_enabled(self.config, 'binary_pairs'):
-            print(f"  Running hyperparameter tuning...")
-            best_params = self._tune_hyperparameters(X_train_val, y_train_val, ModelClass, is_cuml)
-            params = {**params, **best_params}
-        
-        model = ModelClass(**params)
-        model.fit(X_train_val, y_train_val)
-        
-        y_pred = model.predict(X_test_scaled)
-        
-        if hasattr(model, 'predict_proba'):
-            y_proba = model.predict_proba(X_test_scaled)[:, 1]
+            print(f"  Running hyperparameter tuning with Pipeline...")
+            best_params = self._tune_hyperparameters(X_train_raw, y_train, ModelClass, base_params.copy())
+            final_params = {**base_params, **best_params}
         else:
-            y_proba = model.decision_function(X_test_scaled)
-            y_proba = 1 / (1 + np.exp(-y_proba))
+            final_params = base_params
+        
+        # Create Pipeline: StandardScaler + Model
+        pipeline = Pipeline([
+            ('scaler', StandardScaler()),
+            ('model', ModelClass(**final_params))
+        ])
+        
+        # Fit on combined train+val
+        pipeline.fit(X_train_val, y_train_val)
+        
+        # Predict on test set
+        y_pred = pipeline.predict(X_test)
+        
+        if hasattr(pipeline.named_steps['model'], 'predict_proba'):
+            y_proba = pipeline.predict_proba(X_test)[:, 1]
+        else:
+            decision = pipeline.decision_function(X_test)
+            y_proba = 1 / (1 + np.exp(-decision))
         
         metrics = self._calculate_metrics(y_test, y_pred, y_proba)
         self._print_metrics(metrics)
         
-        self._store_results(f_col, model, metrics, y_pred, y_proba, feature_scaler, params)
-        self._save_model(model, f_col)
+        self._store_results(f_col, pipeline, metrics, y_pred, y_proba, final_params)
+        self._save_model(pipeline, f_col)
     
-    def _tune_hyperparameters(self, X, y, ModelClass, is_cuml):
-        """Run hyperparameter tuning using GPU if available"""
+    def _tune_hyperparameters(self, X, y, ModelClass, base_params):
+        """Run hyperparameter tuning using Pipeline to prevent data leakage."""
         tuning_config = get_tuning_config(self.config, 'binary_pairs')
         param_dist = get_param_distributions(self.config, task_type='classification')
         
-        use_gpu = getattr(self.config, 'gpu', {}).get('use_if_available', True)
-        gpu_available = check_gpu_available() if use_gpu else False
+        # Convert to pipeline format
+        pipeline_param_dist = {}
+        for param_name, values in param_dist.items():
+            pipeline_param_dist[f'model__{param_name}'] = values
         
-        if gpu_available and self.model_type in ['random_forest', 'svm', 'logistic_regression']:
-            TuningModelClass, tuning_params, _ = get_tuning_model_for_gpu(self.config, 'classification')
-            print(f"  Using GPU-accelerated tuning for {self.model_type}")
-        else:
-            TuningModelClass, tuning_params = get_cpu_fallback_model(self.config, 'classification')
-            print(f"  Using CPU tuning for {self.model_type}")
+        # Use CPU fallback for tuning
+        TuningModelClass, tuning_params = get_cpu_fallback_model(self.config, 'classification')
+        
+        # Remove params that will be searched
+        for key in list(tuning_params.keys()):
+            if f'model__{key}' in pipeline_param_dist:
+                tuning_params.pop(key, None)
+        
+        print(f"  Using CPU tuning with Pipeline to prevent data leakage")
+        
+        # Create Pipeline: Scaler + Model
+        tuning_pipeline = Pipeline([
+            ('scaler', StandardScaler()),
+            ('model', TuningModelClass(**tuning_params))
+        ])
         
         search = setup_tuning_search(
-            TuningModelClass, param_dist, tuning_config, tuning_params,
+            tuning_pipeline,
+            pipeline_param_dist,
+            tuning_config, 
+            {},
             random_state=self.random_state,
-            use_gpu=(gpu_available and self.model_type in ['random_forest', 'svm', 'logistic_regression']),
+            use_gpu=False,
             model_type=self.model_type,
             task_type='classification'
         )
         search.fit(X, y)
         
         print(f"  Best score: {search.best_score_:.4f}")
-        print(f"  Best params: {search.best_params_}")
+        best_params_raw = search.best_params_
+        best_params = {k.replace('model__', ''): v for k, v in best_params_raw.items()}
+        print(f"  Best params: {best_params}")
         
-        return search.best_params_
+        return best_params
     
     def _calculate_metrics(self, y_true, y_pred, y_proba):
         return {
@@ -134,13 +153,12 @@ class BinaryPairsTrainer:
         print(f"  F1:        {metrics['f1']:.4f}")
         print(f"  ROC-AUC:   {metrics['roc_auc']:.4f}")
     
-    def _store_results(self, f_col, model, metrics, predictions, probabilities, feature_scaler, params):
-        self.results['models'][f_col] = model
+    def _store_results(self, f_col, pipeline, metrics, predictions, probabilities, params):
+        self.results['models'][f_col] = pipeline
         self.results['metrics'][f_col] = metrics
         self.results['predictions'][f_col] = predictions
         self.results['probabilities'][f_col] = probabilities
-        self.results['scalers'][f_col] = feature_scaler
         self.results['best_params'] = params
     
-    def _save_model(self, model, f_col):
-        joblib.dump(model, os.path.join(self.output_dir, f'binary_pairs_{f_col}.pkl'))
+    def _save_model(self, pipeline, f_col):
+        joblib.dump(pipeline, os.path.join(self.output_dir, f'binary_pairs_{f_col}.pkl'))

@@ -172,7 +172,6 @@ class BenchmarkRunner:
             descriptor_type = exp_config.get('descriptor_type', 'soap')
             remove_outlier = exp_config.get('remove_outlier', False)
             tune = exp_config.get('tune', False)
-            # Get per-experiment random_state (fallback to global)
             random_state = exp_config.get('random_state', self.base_config_dict.get('random_state', 42))
 
             if task == 'multilabel' and model_type == 'svm':
