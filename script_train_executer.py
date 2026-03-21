@@ -11,7 +11,7 @@ now = datetime.datetime.now()
 data_time = now.strftime("%Y-%m-%d_%H.%M.%S")
 int_inter = 0  # Global counter
 
-
+LAST_EXP = -1
 def get_prediction_head_params():
     hidden_channels = 256
     activation = 'silu'
@@ -66,9 +66,9 @@ def run_binary(model_name, seed, block_3_split):
                 f"dataset.additional_loading_params.block_3_only={block_3_only}",
                 f"dataset.main_metric={metric}",
                 f"dataset.metric_mode={metric_mode}",
-                f"dataset.hidden_channels={hidden_channels}",
-                f"dataset.activation={activation}",
-                f"dataset.dropout={dropout}"
+                f"dataset.predictor_kwargs.hidden_channels={hidden_channels}",
+                f"dataset.predictor_kwargs.activation={activation}",
+                f"dataset.predictor_kwargs.dropout={dropout}"
 
             ]
             run_cmd(cmd, f"{model_name} | BINARY | f={min_f_value} | {metric}")
@@ -112,9 +112,9 @@ def run_lambda_regression(model_name, seed,
             f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
             f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
             f"dataset.additional_loading_params.block_3_only={block_3_only}",
-            f"dataset.hidden_channels={hidden_channels}",
-            f"dataset.activation={activation}",
-            f"dataset.dropout={dropout}",
+            f"dataset.predictor_kwargs.hidden_channels={hidden_channels}",
+            f"dataset.predictor_kwargs.activation={activation}",
+            f"dataset.predictor_kwargs.dropout={dropout}",
             "dataset.additional_loading_params.filter_type=all_samples"
         ]
         
@@ -156,9 +156,9 @@ def run_f_regression(model_name, seed, standarization, block_3_split):
             f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
             f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
             f"dataset.additional_loading_params.block_3_only={block_3_only}",
-            f"dataset.hidden_channels={hidden_channels}",
-            f"dataset.activation={activation}",
-            f"dataset.dropout={dropout}",
+            f"dataset.predictor_kwargs.hidden_channels={hidden_channels}",
+            f"dataset.predictor_kwargs.activation={activation}",
+            f"dataset.predictor_kwargs.dropout={dropout}",
             "dataset.additional_loading_params.filter_type=all_samples"
         ]
         
