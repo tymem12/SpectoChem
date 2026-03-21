@@ -12,6 +12,11 @@ data_time = now.strftime("%Y-%m-%d_%H.%M.%S")
 int_inter = 0  # Global counter
 
 
+def get_prediction_head_params():
+    hidden_channels = 256
+    activation = 'silu'
+    dropout = 0.2
+    return hidden_channels, activation, dropout
 
 def get_config_string(config):
     """Creates a short folder string representation of the config."""
@@ -49,8 +54,7 @@ def run_binary(model_name, seed, block_3_split):
             experiment_path = f"supervised/{seed}/binary_classification/{model_name}/block_3_{block_3_split}/results"
             block_3_only = block_3_split == "none"
             block_3_split = block_3_split if block_3_split != "none" else 'null'
-
-            
+            hidden_channels, activation, dropout = get_prediction_head_params()
             cmd = [
                 "python", "experiments/scripts/train_graph_level.py",
                 "+exp=TMQM_SPECTO_BINARY",
@@ -61,7 +65,11 @@ def run_binary(model_name, seed, block_3_split):
                 f"dataset.additional_loading_params.min_f_value={min_f_value}",
                 f"dataset.additional_loading_params.block_3_only={block_3_only}",
                 f"dataset.main_metric={metric}",
-                f"dataset.metric_mode={metric_mode}"
+                f"dataset.metric_mode={metric_mode}",
+                f"dataset.hidden_channels={hidden_channels}",
+                f"dataset.activation={activation}",
+                f"dataset.dropout={dropout}"
+
             ]
             run_cmd(cmd, f"{model_name} | BINARY | f={min_f_value} | {metric}")
 
@@ -77,6 +85,8 @@ def run_lambda_regression(model_name, seed,
     lambda_outlier_threshold = 1500
     f_outlier_threshold = 0.5
     sort_by_max_f = False
+    hidden_channels, activation, dropout = get_prediction_head_params()
+
 
 
     
@@ -102,6 +112,9 @@ def run_lambda_regression(model_name, seed,
             f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
             f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
             f"dataset.additional_loading_params.block_3_only={block_3_only}",
+            f"dataset.hidden_channels={hidden_channels}",
+            f"dataset.activation={activation}",
+            f"dataset.dropout={dropout}",
             "dataset.additional_loading_params.filter_type=all_samples"
         ]
         
@@ -119,6 +132,7 @@ def run_f_regression(model_name, seed, standarization, block_3_split):
     sort_by_max_f = False
     normalize_eV = False
 
+    hidden_channels, activation, dropout = get_prediction_head_params()
     
 
     for num_pair in range(0, 10):
@@ -142,6 +156,9 @@ def run_f_regression(model_name, seed, standarization, block_3_split):
             f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
             f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
             f"dataset.additional_loading_params.block_3_only={block_3_only}",
+            f"dataset.hidden_channels={hidden_channels}",
+            f"dataset.activation={activation}",
+            f"dataset.dropout={dropout}",
             "dataset.additional_loading_params.filter_type=all_samples"
         ]
         
