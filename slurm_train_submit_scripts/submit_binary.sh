@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MODELS=("schnet" "gin" "gat" "gcn")
+MODELS=("schnet" "gine" "gat" "gcn")
 BLOCK_SPLITS=("none" "test")
 SEEDS=(2137 42 1234 420 1337)
 
