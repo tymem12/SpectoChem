@@ -1,4 +1,4 @@
-task: "pairs"
+task: "binary"
 model_type: "logistic_regression"
 
 random_state: 42
@@ -9,6 +9,34 @@ experiments:
     descriptor_type: "soap"
     remove_outlier: false
     tune: tune
+    random_state: 42  
+
+  - task: "binary"
+    model_type: "mlp"
+    descriptor_type: "soap"
+    remove_outlier: false
+    tune: tune
+    random_state: 42  
+
+  - task: "binary"
+    model_type: "random_forest"
+    descriptor_type: "soap"
+    remove_outlier: false
+    tune: tune
+    random_state: 42  
+
+  - task: "binary"
+    model_type: "xgboost"
+    descriptor_type: "soap"
+    remove_outlier: false
+    tune: tune
+    random_state: 42  
+
+  - task: "binary"
+    model_type: "dummy"
+    descriptor_type: "soap"
+    remove_outlier: false
+    tune: false
     random_state: 42  
 
 gpu:
