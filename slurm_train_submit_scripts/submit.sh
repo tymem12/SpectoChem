@@ -14,6 +14,6 @@ module load Python/3.11.3-GCCcore-12.3.0
 source .venv/bin/activate
 
 # "$@" passes all command-line arguments straight to the Python script
-PYTHONPATH=. python script_train_executer.py "$@"
+PYTHONPATH=. python ml_run.py "$@"
 
 deactivate

@@ -1,82 +1,10 @@
-task: "binary"
-model_type: "logistic_regression"
-
-random_state: 42
-
 experiments:
   - task: "binary"
     model_type: "logistic_regression"
     descriptor_type: "soap"
-    remove_outlier: false
     tune: tune
     random_state: 42  
-
-  - task: "binary"
-    model_type: "mlp"
-    descriptor_type: "soap"
     remove_outlier: false
-    tune: tune
-    random_state: 42  
-
-  - task: "binary"
-    model_type: "random_forest"
-    descriptor_type: "soap"
-    remove_outlier: false
-    tune: tune
-    random_state: 42  
-
-  - task: "binary"
-    model_type: "xgboost"
-    descriptor_type: "soap"
-    remove_outlier: false
-    tune: tune
-    random_state: 42  
-
-  - task: "binary"
-    model_type: "dummy"
-    descriptor_type: "soap"
-    remove_outlier: false
-    tune: false
-    random_state: 42  
-
-gpu:
-  use_if_available: true
-
-custom_tasks:
-  pairs: true
-  binary: true
-  binary_pairs: true
-  multilabel: false
-
-data:
-  csv_path: './data/datasets/TMQM_SPECTO/raw/uvvis_final_40k.csv'
-  test_size: 0.1
-  val_size: 0.1
-  value_caps:
-    lambda_max: 2000
-    f_max: 0.5
-
-binary_pairs:
-  min_oscillation_strength: 0.01
-  target_prefix: "f_binary"
-
-binary:
-  min_oscillation_strength: 0.010000000002
-  wavelength_range: [330, 650]
-  target_name: "has_uvvis_peak"
-
-multilabel:
-  bucket_size_nm: 10
-  min_wavelength: 330
-  max_wavelength: 650
-  min_oscillation_strength: 0.01
-  target_prefix: "abs_bucket"
-
-targets:
-  num_pairs: 10
-
-descriptor:
-  type: "soap"
 
 soap:
   r_cut: 5.0
@@ -84,9 +12,11 @@ soap:
   l_max: 6
   allowed_species: ['H', 'C', 'N', 'O', 'Cl', 'F', 'P', 'S', 'B', 'Br', 'Si', 'I', 'Se', 'As']
 
-acsf:
-  r_cut: 6.0
-  allowed_species: ['H', 'C', 'N', 'O', 'Cl', 'F', 'P', 'S', 'B', 'Br', 'Si', 'I', 'Se', 'As']
+hydra_config_dir: ../../config
+
+output:
+  models_dir: './xgboost_models'
+  results_dir: './xgboost_results'
 
 tuning:
   xgboost:
@@ -202,6 +132,57 @@ tuning:
       n_estimators: [100, 200]
       max_depth: [4, 6, 8]
 
+dummy:
+  strategy: "mean"
+
+task_to_hydra_exp:
+  binary: '+exp=TMQM_SPECTO_BINARY'
+  pairs: '+exp=TMQM_SPECTO_PAIRS'
+  binary-pairs: '+exp=TMQM_SPECTO_PAIRS'
+  multilabel: '+exp=TMQM_SPECTO_BINARY_VECTOR_MULTILABEL'
+
+gpu:
+  use_if_available: true
+
+
+###################################################################
+###################################################################
+###################################################################
+
+
+custom_tasks:
+  pairs: true
+  binary: true
+  binary_pairs: true
+  multilabel: false
+
+data:
+  csv_path: './data/datasets/TMQM_SPECTO/raw/uvvis_final_40k.csv'
+  test_size: 0.1
+  val_size: 0.1
+  value_caps:
+    lambda_max: 2000
+    f_max: 0.5
+
+binary_pairs:
+  min_oscillation_strength: 0.01
+  target_prefix: "f_binary"
+
+binary:
+  min_oscillation_strength: 0.010000000002
+  wavelength_range: [330, 650]
+  target_name: "has_uvvis_peak"
+
+multilabel:
+  bucket_size_nm: 10
+  min_wavelength: 330
+  max_wavelength: 650
+  min_oscillation_strength: 0.01
+  target_prefix: "abs_bucket"
+
+targets:
+  num_pairs: 10
+
 xgboost:
   n_estimators: 200
   max_depth: 6
@@ -226,17 +207,6 @@ svm:
   kernel: "rbf"
   gamma: "scale"
 
-hydra_config_dir: ../../config
-
-task_to_hydra_exp:
-  binary: '+exp=TMQM_SPECTO_BINARY'
-  pairs: '+exp=TMQM_SPECTO_PAIRS'
-  binary-pairs: '+exp=TMQM_SPECTO_PAIRS'
-  multilabel: '+exp=TMQM_SPECTO_BINARY_VECTOR_MULTILABEL'
-
-dummy:
-  strategy: "mean"
-
 logistic_regression:
   C: 1.0
   max_iter: 1000
@@ -259,6 +229,14 @@ mlp:
   n_iter_no_change: 10
   verbose: false
 
-output:
-  models_dir: './xgboost_models'
-  results_dir: './xgboost_results'
+descriptor:
+  type: "soap"
+
+acsf:
+  r_cut: 6.0
+  allowed_species: ['H', 'C', 'N', 'O', 'Cl', 'F', 'P', 'S', 'B', 'Br', 'Si', 'I', 'Se', 'As']
+task: "pairs"
+model_type: "logistic_regression"
+
+random_state: 42
+
