@@ -128,6 +128,10 @@ def setup_tuning_search(model_class, param_distributions, tuning_config, base_pa
     
     base_estimator = model_class
     
+    print("Random search distributions:")
+    from pprint import pprint
+    pprint(param_distributions, sort_dicts=False)
+
     if use_gpu and model_type in ['random_forest', 'svm', 'logistic_regression']:
         try:
             from cuml.model_selection import RandomizedSearchCV as cuMLRandomizedSearchCV
@@ -161,6 +165,7 @@ def setup_tuning_search(model_class, param_distributions, tuning_config, base_pa
     
     if n_jobs == -1:
         n_jobs = min(4, os.cpu_count() or 1)  
+    
     
     search = RandomizedSearchCV(
         estimator=base_estimator,
