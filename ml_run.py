@@ -46,14 +46,14 @@ def run_binary(r_cut, n_max, l_max, seed, block_3_split):
 
             # Set n_iter to a huge number to force full Grid Search behavior
             config['tuning']['xgboost']['n_iter'] = 9999999
-            config['tuning']['xgboost'].update({
+            config['tuning']['xgboost']["param_distributions"] = {
                 'n_jobs': [-1],
                 'n_estimators': [200, 500, 1000],
                 'max_depth': [3, 5, 8],
                 'learning_rate': [0.01, 0.05, 0.3],
                 'subsample': [0.7, 0.9],
                 'colsample_bytree': [0.3, 0.6, 0.9]
-            })
+            }
 
             config['tuning']['xgboost']['n_jobs'] = 1
 
