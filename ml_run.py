@@ -48,9 +48,9 @@ def run_binary(r_cut, n_max, l_max, seed, block_3_split):
             config['tuning']['xgboost']['n_iter'] = 9999999
             config['tuning']['xgboost']["param_distributions"] = {
                 'n_jobs': [-1],
-                'n_estimators': [200, 500, 1000],
-                'max_depth': [3, 5, 8],
-                'learning_rate': [0.01, 0.05, 0.3],
+                'n_estimators': [500, 1000, 2000],
+                'max_depth': [8, 12, 15],
+                'learning_rate': [0.01, 0.05, 0.1],
                 'subsample': [0.7, 0.9],
                 'colsample_bytree': [0.3, 0.6, 0.9]
             }
