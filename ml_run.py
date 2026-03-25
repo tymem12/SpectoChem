@@ -9,13 +9,23 @@ def run_cmd(cmd, description):
     print(f"\n--- Running: {description} ---")
     subprocess.run(cmd)
 
-def run_binary(r_cut, n_max, l_max, seed, block_3_split):
+def run_binary(model_name: str, search_space: dict[str, list], r_cut, n_max, l_max, seed, block_3_split):
     # Ensure config directory exists
     os.makedirs("ml_configs", exist_ok=True)
     
     # Load default config
     with open("xgboost_training/config.yaml", 'r') as f:
         base_config = yaml.safe_load(f)
+
+    if model_name == "logistic_regression":
+        search_space = dict(
+            classification=search_space
+        )
+
+    if model_name != "xgboost":
+        cv_n_jobs = -1
+    else:
+        cv_n_jobs = 1
 
     for min_f_value in [0.01]:
         for metric, metric_mode in [('F1', 'max')]:
@@ -34,7 +44,7 @@ def run_binary(r_cut, n_max, l_max, seed, block_3_split):
             config['output']['results_dir'] = f"ml_experiments/results/{config_str}"
             
             # Update model and tuning settings
-            config['experiments'][0]['model_type'] = "xgboost"
+            config['experiments'][0]['model_type'] = model_name
             config['experiments'][0]['tune'] = True
             
             # Inject SOAP parameters
@@ -42,20 +52,15 @@ def run_binary(r_cut, n_max, l_max, seed, block_3_split):
             config['soap']['n_max'] = n_max
             config['soap']['l_max'] = l_max
 
-            config['tuning']['xgboost']['cv'] = 5
+            tuning_params = config['tuning'][model_name]
+
+            tuning_params['cv'] = 5
 
             # Set n_iter to a huge number to force full Grid Search behavior
-            config['tuning']['xgboost']['n_iter'] = 9999999
-            config['tuning']['xgboost']["param_distributions"] = {
-                'n_jobs': [-1],
-                'n_estimators': [500, 1000, 2000],
-                'max_depth': [8, 12, 15],
-                'learning_rate': [0.01, 0.05, 0.1],
-                'subsample': [0.7, 0.9],
-                'colsample_bytree': [0.3, 0.6, 0.9]
-            }
+            tuning_params['n_iter'] = 9999999
+            tuning_params["param_distributions"] = search_space
 
-            config['tuning']['xgboost']['n_jobs'] = 1
+            tuning_params['n_jobs'] = cv_n_jobs
 
             # 3. Save the modified config
             config_path = f"ml_configs/{config_str}.yaml"
@@ -75,10 +80,11 @@ def run_binary(r_cut, n_max, l_max, seed, block_3_split):
                 f"dataset.metric_mode={metric_mode}"
             ]
             
-            run_cmd(cmd, f"XGBOOST | SOAP: {config_str}")
+            run_cmd(cmd, f"{model_name.upper()} | SOAP: {config_str}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run XGBoost benchmark with specific SOAP parameters.")
+    parser.add_argument("--model-name", required=True)
     parser.add_argument("--r_cut", type=float, required=True, help="SOAP cutoff radius")
     parser.add_argument("--n_max", type=int, required=True, help="Number of radial basis functions")
     parser.add_argument("--l_max", type=int, required=True, help="Maximum degree of spherical harmonics")
@@ -87,4 +93,50 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    run_binary(args.r_cut, args.n_max, args.l_max, args.seed, args.block_3_split)
+    model_name = args.model_name
+
+    match model_name:
+        case "xgboost":
+            search_space = {
+                'n_jobs': [-1],
+                'n_estimators': [4000],
+                'max_depth': [15, 20],
+                'learning_rate': [0.001, 0.01],
+                'subsample': [0.9],
+                'colsample_bytree': [0.9]
+            }
+        case "random_forest":
+            search_space = {
+                "n_estimators": [200, 500, 1000],
+                "max_depth": [5, 10],
+                "min_samples_split": [2, 5, 10],
+                "min_samples_leaf": [1, 5, 10],
+                "max_features": ["sqrt", None],
+                "bootstrap": [True, False]
+            }
+        case "svm":
+            search_space = {
+                "C": [0.1, 1, 10, 100, 1000],
+                "gamma": ["scale", "auto", 0.001, 0.01, 0.1, 1],
+                "kernel": ["rbf", "poly", "sigmoid"],
+                "degree": [2, 3, 4],
+                "coef0": [0.0, 0.1, 0.5]
+            }
+        case "logistic_regression":
+            search_space = {
+                "C": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+                "max_iter": [100, 500, 1000]
+            }
+        case "mlp":
+            search_space = {
+                "hidden_layer_sizes": [[32], [64], [128], [32, 32], [64, 64]],
+                "activation": ["relu", "tanh"],
+                "alpha": [0.0001, 0.001, 0.01],
+                "learning_rate_init": [0.001, 0.01],
+                "solver": ["adam"],
+                "early_stopping": [True]
+            }
+        case _:
+            raise ValueError(f"Unsupported model {model_name!r}")
+
+    run_binary(model_name, search_space, args.r_cut, args.n_max, args.l_max, args.seed, args.block_3_split)
