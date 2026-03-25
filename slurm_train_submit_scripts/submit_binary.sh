@@ -4,6 +4,15 @@
 BLOCK_SPLIT="none"
 SEED=1234
 
+# Models to run
+MODELS=(
+    #"xgboost"
+    "random_forest"
+    "svm"
+    "logistic_regression"
+    "mlp"
+)
+
 # Grid parameters
 R_CUTS=(5.0 10.0)
 
@@ -39,24 +48,27 @@ NL_PAIRS=(
 
 DIR="$(dirname "$0")"
 
-for r in "${R_CUTS[@]}"; do
-    for nl in "${NL_PAIRS[@]}"; do
-        
-        # Split the string into n and l variables
-        read -r n l <<< "$nl"
-        
-        echo "==== CONFIG: r_cut=$r | n_max=$n | l_max=$l | seed=$SEED | block=$BLOCK_SPLIT ===="
-        
-        # Call your wrapper (passing the new arguments)
-        sh "$DIR/submit_wrapper.sh" \
-            --r_cut "$r" \
-            --n_max "$n" \
-            --l_max "$l" \
-            --seed "$SEED" \
-            --block_3_split "$BLOCK_SPLIT"
-        
-        sleep 1
+for model in "${MODELS[@]}"; do
+    for r in "${R_CUTS[@]}"; do
+        for nl in "${NL_PAIRS[@]}"; do
+            
+            # Split the string into n and l variables
+            read -r n l <<< "$nl"
+            
+            echo "==== CONFIG: model=$model | r_cut=$r | n_max=$n | l_max=$l | seed=$SEED | block=$BLOCK_SPLIT ===="
+            
+            # Call your wrapper (passing the new arguments)
+            sh "$DIR/submit_wrapper.sh" \
+                --model-name "$model" \
+                --r_cut "$r" \
+                --n_max "$n" \
+                --l_max "$l" \
+                --seed "$SEED" \
+                --block_3_split "$BLOCK_SPLIT"
+            
+            sleep 1
+        done
     done
 done
 
-echo "All SOAP XGBoost jobs submitted!"
+echo "All SOAP model jobs submitted!"
