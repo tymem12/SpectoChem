@@ -77,7 +77,7 @@ def run_binary(r_cut, n_max, l_max, seed, block_3_split):
             
             run_cmd(cmd, f"XGBOOST | SOAP: {config_str}")
             
-def run_pairs(r_cut, n_max, l_max, seed, block_3_split):
+def run_pairs(r_cut, n_max, l_max, seed, block_3_split, model_type="xgboost"):
     os.makedirs("ml_configs", exist_ok=True)
     
     with open("xgboost_training/config.yaml", 'r') as f:
@@ -94,7 +94,7 @@ def run_pairs(r_cut, n_max, l_max, seed, block_3_split):
             block_3_only = block_3_split == "none"
             split_val = block_3_split if block_3_split != "none" else 'null'
             
-            config_str = f"r{r_cut}_n{n_max}_l{l_max}__seed-{seed}_block-3-{block_3_split}"
+            config_str = f"r{r_cut}_n{n_max}_l{l_max}__seed-{seed}_block-3-{block_3_split}__model-{model_type}"
             
             config = copy.deepcopy(base_config)
             
@@ -102,25 +102,30 @@ def run_pairs(r_cut, n_max, l_max, seed, block_3_split):
             config['output']['models_dir'] = f"ml_experiments/models/{config_str}"
             config['output']['results_dir'] = f"ml_experiments/results/{config_str}"
             
-            config['experiments'][0]['model_type'] = "xgboost"
+            config['experiments'][0]['model_type'] = model_type
             config['experiments'][0]['tune'] = True
             config['experiments'][0]['task'] = "pairs"
             
             config['soap']['r_cut'] = r_cut
             config['soap']['n_max'] = n_max
             config['soap']['l_max'] = l_max
+            
+            if model_type == "dummy":
+                config['experiments'][0]['tune'] = False
+            else:
+                config['experiments'][0]['tune'] = True
 
-            config['tuning']['xgboost']['cv'] = 5
+            # config['tuning']['xgboost']['cv'] = 2 #5
 
-            config['tuning']['xgboost']['n_iter'] = 9999999
-            config['tuning']['xgboost']["param_distributions"] = {
-                'n_jobs': [-1],
-                'n_estimators': [500, 1000, 2000],
-                'max_depth': [8, 12, 15],
-                'learning_rate': [0.01, 0.05, 0.1],
-                'subsample': [0.7, 0.9],
-                'colsample_bytree': [0.3, 0.6, 0.9]
-            }
+            # config['tuning']['xgboost']['n_iter'] = 9999999
+            # config['tuning']['xgboost']["param_distributions"] = {
+            #     'n_jobs': [-1],
+            #     'n_estimators': [2], #[500, 1000, 2000],
+            #     'max_depth': [2], # [8, 12, 15],
+            #     'learning_rate': [0.02], # [0.01, 0.05, 0.1],
+            #     'subsample': [0.7], #[0.7, 0.9],
+            #     'colsample_bytree': [0.3] # [0.3, 0.6, 0.9]
+            # }
 
             config['tuning']['xgboost']['n_jobs'] = 1
         
@@ -138,7 +143,7 @@ def run_pairs(r_cut, n_max, l_max, seed, block_3_split):
                 f"dataset.additional_loading_params.min_f_value={min_f_value}",
                 f"dataset.additional_loading_params.block_3_only={block_3_only}",
                 f"dataset.main_metric={metric}",
-                f"dataset.metric_mode={metric_mode}"
+                f"dataset.metric_mode={metric_mode}",
                 f"dataset.additional_loading_params.num_states=1",
                 f"dataset.additional_loading_params.filter_f_value={min_f_value}",
                 f"dataset.additional_loading_params.sort_by_max_f={sort_by_max_f}",
@@ -161,8 +166,18 @@ if __name__ == "__main__":
     parser.add_argument("--l_max", type=int, required=True, help="Maximum degree of spherical harmonics")
     parser.add_argument("--seed", type=int, required=True, help="Random seed")
     parser.add_argument("--block_3_split", type=str, default="none", help="Block 3 split mode ('none' or 'test')")
+    parser.add_argument("--model", type=str, default="xgboost", 
+                        choices=["xgboost", "random_forest", "dummy", "logistic_regression", "mlp"],
+                        help="ML model type to use (default: xgboost)")
     
     args = parser.parse_args()
     
-  #  run_binary(args.r_cut, args.n_max, args.l_max, args.seed, args.block_3_split)
-    run_pairs(args.r_cut, args.n_max, args.l_max, args.seed, args.block_3_split)
+    run_pairs(args.r_cut, args.n_max, args.l_max, args.seed, args.block_3_split, args.model)
+    
+#     BLOCK_SPLIT="none"
+# SEED=1234
+
+# # Specific parameters requested
+# R_CUTS=(5.0)
+# NL_PAIRS=("1 9")
+# MODELS=("xgboost" "random_forest" "dummy" "logistic_regression" "mlp")
