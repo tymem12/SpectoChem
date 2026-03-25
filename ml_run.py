@@ -87,7 +87,7 @@ def run_pairs(r_cut, n_max, l_max, seed, block_3_split, model_type="xgboost"):
     lambda_outlier_threshold = 1500
     f_outlier_threshold = 0.5
     sort_by_max_f = False
-    normalize_eV = False
+    normalize_eV = True
 
     for min_f_value in [0.01]:
         for metric, metric_mode in [('F1', 'max')]:
@@ -110,7 +110,7 @@ def run_pairs(r_cut, n_max, l_max, seed, block_3_split, model_type="xgboost"):
             config['soap']['n_max'] = n_max
             config['soap']['l_max'] = l_max
             
-            if model_type == "dummy":
+            if model_type == "dummy" or model_type == "xgboost":
                 config['experiments'][0]['tune'] = False
             else:
                 config['experiments'][0]['tune'] = True
@@ -144,7 +144,7 @@ def run_pairs(r_cut, n_max, l_max, seed, block_3_split, model_type="xgboost"):
                 f"dataset.additional_loading_params.block_3_only={block_3_only}",
                 f"dataset.main_metric={metric}",
                 f"dataset.metric_mode={metric_mode}",
-                f"dataset.additional_loading_params.num_states=1",
+                f"dataset.additional_loading_params.num_states=10",
                 f"dataset.additional_loading_params.filter_f_value={min_f_value}",
                 f"dataset.additional_loading_params.sort_by_max_f={sort_by_max_f}",
                 f"dataset.additional_loading_params.outlier_strategy={outlier_strategy}",
@@ -174,10 +174,3 @@ if __name__ == "__main__":
     
     run_pairs(args.r_cut, args.n_max, args.l_max, args.seed, args.block_3_split, args.model)
     
-#     BLOCK_SPLIT="none"
-# SEED=1234
-
-# # Specific parameters requested
-# R_CUTS=(5.0)
-# NL_PAIRS=("1 9")
-# MODELS=("xgboost" "random_forest" "dummy" "logistic_regression" "mlp")

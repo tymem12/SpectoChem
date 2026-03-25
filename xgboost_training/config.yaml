@@ -2,14 +2,14 @@ experiments:
   - task: "binary"
     model_type: "logistic_regression"
     descriptor_type: "soap"
-    tune: tune
+    tune: true
     random_state: 42  
     remove_outlier: false
 
 soap:
-  r_cut: 5.0
-  n_max: 8
-  l_max: 6
+  r_cut: 10.0
+  n_max: 4
+  l_max: 2
   allowed_species: ['H', 'C', 'N', 'O', 'Cl', 'F', 'P', 'S', 'B', 'Br', 'Si', 'I', 'Se', 'As']
 
 hydra_config_dir: ../../config
@@ -181,16 +181,15 @@ targets:
   num_pairs: 10
 
 xgboost:
-  n_estimators: 200
-  max_depth: 6
+  n_estimators: 1000
+  max_depth: 8
   learning_rate: 0.05
   subsample: 0.8
-  colsample_bytree: 0.8
+  colsample_bytree: 0.9
   tree_method: "hist"
+  subsample: 0.7
   device: "cuda"
-  n_jobs: 1
-  verbosity: 0
-  min_child_weight: 1  
+  n_jobs: -1
 
 random_forest:
   n_estimators: 200
