@@ -28,12 +28,27 @@ def generate_report(model_name, root_dir="ml_experiments/benchmark_results"):
         feat_count = get_feature_count(n_max, l_max)
         
         benchmark_dirs = list(folder.glob("benchmark_*"))
-        if len(benchmark_dirs) != 1:
-            raise RuntimeError(f"Expected 1 benchmark dir in {folder}, found {len(benchmark_dirs)}")
         
-        bench_root = benchmark_dirs[0]
-        # REPLACED "xgboost" WITH DYNAMIC MODEL NAME
-        base_path = bench_root / f"binary_{model_name}_soap_outlierFalse_tuneTrue_seed42"
+        if not benchmark_dirs:
+            failures.append((config_label, "No benchmark directories found"))
+            continue
+            
+        target_dir_name = f"binary_{model_name}_soap_outlierFalse_tuneTrue_seed42"
+        
+        # Find dirs that actually contain the requested model
+        valid_bench_dirs = [d for d in benchmark_dirs if (d / target_dir_name).exists()]
+        
+        # --- APPEND TO FAILURES AND CONTINUE ---
+        if not valid_bench_dirs:
+            failures.append((config_label, f"Model '{model_name}' not found in any benchmark dir"))
+            continue
+            
+        # Sort lexicographically descending so newest datetime is first
+        valid_bench_dirs.sort(key=lambda d: d.name, reverse=True)
+        bench_root = valid_bench_dirs[0]
+            
+        base_path = bench_root / target_dir_name
+        # ------------------------------------------
         
         csv_path = base_path / "results" / "model_metrics_binary.csv"
         json_path = bench_root / "benchmark_summary_intermediate.json"
@@ -53,8 +68,10 @@ def generate_report(model_name, root_dir="ml_experiments/benchmark_results"):
                         with open(yaml_path, 'r') as yf:
                             yaml_config = yaml.safe_load(yf)
                         
-                        # REPLACED "xgboost" WITH DYNAMIC MODEL NAME
                         param_dist = yaml_config.get("tuning", {}).get(model_name, {}).get("param_distributions", {})
+                        if model_name == "logistic_regression":
+                            param_dist = param_dist["classification"]
+    
                         search_keys = {k for k, v in param_dist.items() if isinstance(v, list) and len(v) > 1}
                         
                         with open(model_path, 'rb') as mf:
@@ -135,7 +152,6 @@ def generate_report(model_name, root_dir="ml_experiments/benchmark_results"):
                 "dict": dict(ph)
             }
 
-        # ADDED MODEL NAME HEADER
         print("\n" + "="*145)
         print(f" REPORT FOR MODEL: {model_name.upper().replace('_', ' ')} ".center(145, "="))
         print("="*145)
