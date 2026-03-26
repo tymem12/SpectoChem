@@ -2,7 +2,7 @@
 #SBATCH --partition=plgrid-lem-cpu
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=12
+#SBATCH --cpus-per-task=96
 #SBATCH --mem=96GB
 #SBATCH --time=24:00:00
 
