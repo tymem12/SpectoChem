@@ -66,7 +66,7 @@ def run_binary(r_cut, n_max, l_max, seed, block_3_split):
             cmd = [
                 "python", "xgboost_training/benchmark.py",
                 "--config", config_path,
-                "+exp=TMQM_SPECTO_BINARY", # Assuming you still need the base Hydra experiment
+                "+exp=TMQM_SPECTO_BINARY", 
                 f"training.random_seed={seed}",
                 f"dataset.block_3_split_mode={split_val}",
                 f"dataset.additional_loading_params.min_f_value={min_f_value}",
@@ -77,7 +77,18 @@ def run_binary(r_cut, n_max, l_max, seed, block_3_split):
             
             run_cmd(cmd, f"XGBOOST | SOAP: {config_str}")
             
-def run_pairs(r_cut, n_max, l_max, seed, block_3_split, model_type="xgboost"):
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+            
+            
+def run_pairs(r_cut, n_max, l_max, seed, block_3_split, model_type="xgboost", normalize_eV=True):
     os.makedirs("ml_configs", exist_ok=True)
     
     with open("xgboost_training/config.yaml", 'r') as f:
@@ -87,14 +98,14 @@ def run_pairs(r_cut, n_max, l_max, seed, block_3_split, model_type="xgboost"):
     lambda_outlier_threshold = 1500
     f_outlier_threshold = 0.5
     sort_by_max_f = False
-    normalize_eV = True
 
     for min_f_value in [0.01]:
         for metric, metric_mode in [('F1', 'max')]:
             block_3_only = block_3_split == "none"
             split_val = block_3_split if block_3_split != "none" else 'null'
             
-            config_str = f"r{r_cut}_n{n_max}_l{l_max}__seed-{seed}_block-3-{block_3_split}__model-{model_type}"
+            config_str = (f"r{r_cut}_n{n_max}_l{l_max}__seed-{seed}_"
+                          f"block-3-{block_3_split}__model-{model_type}__normev-{normalize_eV}")
             
             config = copy.deepcopy(base_config)
             
@@ -109,27 +120,9 @@ def run_pairs(r_cut, n_max, l_max, seed, block_3_split, model_type="xgboost"):
             config['soap']['r_cut'] = r_cut
             config['soap']['n_max'] = n_max
             config['soap']['l_max'] = l_max
-            
-            if model_type == "dummy" or model_type == "xgboost":
-                config['experiments'][0]['tune'] = False
-            else:
-                config['experiments'][0]['tune'] = True
 
-            # config['tuning']['xgboost']['cv'] = 2 #5
-
-            # config['tuning']['xgboost']['n_iter'] = 9999999
-            # config['tuning']['xgboost']["param_distributions"] = {
-            #     'n_jobs': [-1],
-            #     'n_estimators': [2], #[500, 1000, 2000],
-            #     'max_depth': [2], # [8, 12, 15],
-            #     'learning_rate': [0.02], # [0.01, 0.05, 0.1],
-            #     'subsample': [0.7], #[0.7, 0.9],
-            #     'colsample_bytree': [0.3] # [0.3, 0.6, 0.9]
-            # }
-
-            config['tuning']['xgboost']['n_jobs'] = 1
+            config['experiments'][0]['tune'] = False
         
-
             config_path = f"ml_configs/{config_str}.yaml"
             with open(config_path, 'w') as f:
                 yaml.dump(config, f, default_flow_style=False)
@@ -155,7 +148,6 @@ def run_pairs(r_cut, n_max, l_max, seed, block_3_split, model_type="xgboost"):
                 f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
                 "dataset.additional_loading_params.filter_type=all_samples"
             ]
-        
             
             run_cmd(cmd, f"XGBOOST | SOAP: {config_str}")
 
@@ -169,8 +161,8 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="xgboost", 
                         choices=["xgboost", "random_forest", "dummy", "logistic_regression", "mlp"],
                         help="ML model type to use (default: xgboost)")
+    parser.add_argument("--normalize_ev", type=str2bool, default=True, help="Whether to normalize to eV")
     
     args = parser.parse_args()
     
-    run_pairs(args.r_cut, args.n_max, args.l_max, args.seed, args.block_3_split, args.model)
-    
+    run_pairs(args.r_cut, args.n_max, args.l_max, args.seed, args.block_3_split, args.model, args.normalize_ev)
