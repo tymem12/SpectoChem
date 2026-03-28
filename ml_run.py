@@ -107,20 +107,16 @@ if __name__ == "__main__":
             }
         case "random_forest":
             search_space = {
-                "n_estimators": [200, 500, 1000],
-                "max_depth": [5, 10],
+                "n_estimators": [50, 200, 500, 1000],
+                "max_depth": [3, 5, 10],
                 "min_samples_split": [2, 5, 10],
                 "min_samples_leaf": [1, 5, 10],
-                "max_features": ["sqrt", None],
-                "bootstrap": [True, False]
             }
         case "svm":
             search_space = {
-                "C": [0.1, 1, 10, 100, 1000],
+                "C": [0.1, 1, 10, 100],
                 "gamma": ["scale", "auto", 0.001, 0.01, 0.1, 1],
-                "kernel": ["rbf", "poly", "sigmoid"],
-                "degree": [2, 3, 4],
-                "coef0": [0.0, 0.1, 0.5]
+                "degree": [2, 3, 4]
             }
         case "logistic_regression":
             search_space = {
