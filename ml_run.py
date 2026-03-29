@@ -114,8 +114,8 @@ if __name__ == "__main__":
             }
         case "svm":
             search_space = {
-                "C": [0.1, 1, 10, 100],
-                "gamma": ["scale", "auto", 0.001, 0.01, 0.1, 1]
+                "C": [0.1, 1, 10],
+                "gamma": ["scale", "auto"]
             }
         case "logistic_regression":
             search_space = {
