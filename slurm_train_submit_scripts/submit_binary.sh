@@ -7,10 +7,10 @@ SEED=1234
 # Models to run
 MODELS=(
     #"xgboost"
-    "random_forest"
+    #"random_forest"
     "svm"
-    "logistic_regression"
-    "mlp"
+    #"logistic_regression"
+    #"mlp"
 )
 
 # Grid parameters
