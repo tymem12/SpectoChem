@@ -5,7 +5,7 @@ SEEDS=(2137 42 1234 420 1337)
 NORM_EV_OPTS=("True" "False") 
 R_CUTS=(10.0)
 NL_PAIRS=("4 2")
-MODELS=("xgboost" "random_forest" "dummy" "logistic_regression" "mlp")
+MODELS=("xgboost" "random_forest" "svm" "mlp" "logistic_regression" "dummy")
 
 DIR="$(dirname "$0")"
 
