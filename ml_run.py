@@ -45,7 +45,7 @@ def run_binary(model_name: str, search_space: dict[str, list], r_cut, n_max, l_m
             
             # Update model and tuning settings
             config['experiments'][0]['model_type'] = model_name
-            config['experiments'][0]['tune'] = True
+            config['experiments'][0]['tune'] = False
             
             # Inject SOAP parameters
             config['soap']['r_cut'] = r_cut
