@@ -374,8 +374,12 @@ class TMQMGStarDataset(InMemoryDataset):
         lambda_outlier_threshold = self.lambda_outlier_threshold
         f_outlier_threshold = self.f_outlier_threshold
 
-        if self.outlier_strategy == "remove_whole_compounds":
-            raise NotImplementedError("Outlier strategy 'remove_whole_compounds' is not implemented yet.")
+        if self.outlier_strategy == "whole-compound-outlier-removal":
+            # if any lambda is above the lambda_outlier_threshold, remove whole compound
+            if lambda_outlier_threshold is not None and any(lam > lambda_outlier_threshold for lam, f in transitions):
+                return []
+            
+
         elif self.outlier_strategy == "remove_outlying_transitions":
             return_transitions = transitions
             if lambda_outlier_threshold is not None:
@@ -469,8 +473,10 @@ class TMQMGStarDataset(InMemoryDataset):
                 emb = self.precomputed_embedings.get_embedding(csd_code)
                 kwargs['representation'] = emb
 
-            transitions = self.filter_data_with_criterion(row,self.filter_type)
+            transitions = self.filter_data_with_criterion(row, self.filter_type)
             transitions = self.remove_outliers(transitions)
+            if not transitions:
+                continue
             transitions = self.convert_lambdas_to_ev(transitions)
             if not transitions:
                 continue
