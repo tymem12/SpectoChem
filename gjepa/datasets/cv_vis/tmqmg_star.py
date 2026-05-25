@@ -25,7 +25,7 @@ class TMQMGStarDataset(InMemoryDataset):
         version: str = "v1",
         prediction_type: str = "pairs",
         prediction_params: Optional[dict] = None,
-        vis_range: Tuple[float, float] = (380.0, 750.0),
+        vis_range: Tuple[float, float] = (350.0, 650.0),
         num_states: int = 10,
         filter_f_value: float = 0.001,
         min_f_value: float = 0.001,
@@ -378,8 +378,6 @@ class TMQMGStarDataset(InMemoryDataset):
             # if any lambda is above the lambda_outlier_threshold, remove whole compound
             if lambda_outlier_threshold is not None and any(lam > lambda_outlier_threshold for lam, f in transitions):
                 return []
-            
-
         elif self.outlier_strategy == "remove_outlying_transitions":
             return_transitions = transitions
             if lambda_outlier_threshold is not None:
@@ -387,14 +385,17 @@ class TMQMGStarDataset(InMemoryDataset):
             if f_outlier_threshold is not None:
                 return_transitions = [(lam, min(f, f_outlier_threshold)) for lam, f in return_transitions]
             return return_transitions
+        else:
+            raise ValueError(f"Invalid outlier strategy: {self.outlier_strategy!r}")
+
         return transitions
-        
+
     def convert_lambdas_to_ev(self, transitions):
         if not transitions:
             return []
         if self.convert_to_ev and self.prediction_type in {"pairs", 'only_lambdas',
                                                            'lambda_regressor'}:
-            ev_trainsitions = [(1239.84 / lam, f) for lam, f in transitions]
+            ev_trainsitions = [(1239.8419843320026224 / lam, f) for lam, f in transitions]
             return ev_trainsitions
         return transitions
 
