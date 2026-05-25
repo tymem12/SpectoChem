@@ -19,7 +19,7 @@ main_metric: F1
 additional_loading_params: 
   prediction_type: binary_vector_multiclass
   num_states: 1
-  vis_range: [330, 650]
+  vis_range: [350, 650]
   block_3_only: True
   filter_type: one_visible_lambda   # all_samples, one_visible_lambda
   min_f_value: 0.01

@@ -19,7 +19,7 @@ main_metric: loss  #AUROC  Accuracy
 additional_loading_params: 
   prediction_type: binary_classification
   num_states: 1
-  vis_range: [330, 650]
+  vis_range: [350, 650]
   block_3_only: True
   filter_type: all_samples    # all_samples
   filter_f_value: -1
@@ -31,5 +31,5 @@ additional_loading_params:
   outlier_strategy: whole-compound-outlier-removal
   convert_to_ev: false
   f_outlier_threshold: null # 0.5 null
-  lambda_outlier_threshold: 1350  #null 1500
+  lambda_outlier_threshold: 1327.9505300000078  #null 1500
   
