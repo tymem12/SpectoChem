@@ -29,11 +29,21 @@ class Config:
     def hydra_overrides(self) -> List[str]:
         """Get Hydra overrides list from config."""
         return self._config.get('hydra_overrides', [])
+    
+    @hydra_overrides.setter
+    def hydra_overrides(self, value: List[str]):
+        """Set Hydra overrides list."""
+        self._config['hydra_overrides'] = value
 
     @property
     def hydra_config_dir(self) -> str:
         """Get Hydra config directory from config."""
         return self._config.get('hydra_config_dir', './config')
+    
+    @hydra_config_dir.setter
+    def hydra_config_dir(self, value: str):
+        """Set Hydra config directory."""
+        self._config['hydra_config_dir'] = value
 
     @property
     def task_to_hydra_exp(self) -> Dict[str, str]:
