@@ -65,6 +65,7 @@ def run_binary(model_name, seed, block_3_split):
                 "model=supervised_graph_level",
                 f"backbone@model.backbone={model_name}",
                 f"training.experiment_name={experiment_path}",
+                f"training.random_seed={seed}",
                 f"dataset.block_3_split_mode={block_3_split}",
                 f"dataset.additional_loading_params.min_f_value={min_f_value}",
                 f"dataset.additional_loading_params.block_3_only={block_3_only}",
