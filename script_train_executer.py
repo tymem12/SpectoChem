@@ -55,6 +55,10 @@ def run_binary(model_name, seed, block_3_split):
             block_3_only = block_3_split == "none"
             block_3_split = block_3_split if block_3_split != "none" else 'null'
             hidden_channels, activation, dropout = get_prediction_head_params()
+            
+            outlier_strategy = 'whole-compound-outlier-removal'
+            lambda_outlier_threshold = 1350
+            f_outlier_threshold = 'null'
             cmd = [
                 "python", "experiments/scripts/train_graph_level.py",
                 "+exp=TMQM_SPECTO_BINARY",
@@ -68,6 +72,9 @@ def run_binary(model_name, seed, block_3_split):
                 f"dataset.metric_mode={metric_mode}",
                 f"dataset.predictor_kwargs.hidden_channels={hidden_channels}",
                 f"dataset.predictor_kwargs.activation={activation}",
+                f"dataset.additional_loading_params.outlier_strategy={outlier_strategy}",
+                f"dataset.additional_loading_params.lambda_outlier_threshold={lambda_outlier_threshold}",
+                f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
                 f"dataset.predictor_kwargs.dropout={dropout}"
 
             ]
@@ -81,9 +88,9 @@ def run_lambda_regression(model_name, seed,
     block_3_only = block_3_split == "none"
     block_3_split = block_3_split if block_3_split != "none" else 'null'
     min_f_value = -1
-    outlier_strategy = 'remove_outlying_transition'
-    lambda_outlier_threshold = 1500
-    f_outlier_threshold = 0.5
+    outlier_strategy = 'whole-compound-outlier-removal'
+    lambda_outlier_threshold = 1350
+    f_outlier_threshold = 'null'
     sort_by_max_f = False
     hidden_channels, activation, dropout = get_prediction_head_params()
 
@@ -126,9 +133,9 @@ def run_f_regression(model_name, seed, standarization, block_3_split):
     block_3_split = block_3_split if block_3_split != "none" else 'null'
 
     min_f_value = -1
-    outlier_strategy = 'remove_outlying_transition'
-    lambda_outlier_threshold = 1500
-    f_outlier_threshold = 0.5
+    outlier_strategy = 'whole-compound-outlier-removal'
+    lambda_outlier_threshold = 1350
+    f_outlier_threshold = 'null'
     sort_by_max_f = False
     normalize_eV = False
 

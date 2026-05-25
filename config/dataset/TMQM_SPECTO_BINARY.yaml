@@ -28,8 +28,8 @@ additional_loading_params:
   standarize_lambda: false
   standarize_f: false
   load_representations: ''
-  outlier_strategy: null
+  outlier_strategy: whole-compound-outlier-removal
   convert_to_ev: false
-  f_outlier_threshold: null
-  lambda_outlier_threshold: null
+  f_outlier_threshold: null # 0.5 null
+  lambda_outlier_threshold: 1350  #null 1500
   
