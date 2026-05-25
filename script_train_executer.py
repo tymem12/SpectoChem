@@ -86,10 +86,10 @@ def run_lambda_regression(model_name, seed,
     f_outlier_threshold = 'null'
     sort_by_max_f = False
 
-    
+    f_as_log10 = False
 
     for num_pair in range(0, 10):
-        experiment_path = f"supervised/{seed}/lambda_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}/block_3_{block_3_split}/results"
+        experiment_path = f"supervised/{seed}/lambda_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}_f-as-log10-{f_as_log10}/block_3_{block_3_split}/results"
 
         cmd = [
             "python", "experiments/scripts/train_graph_level.py",
@@ -108,13 +108,14 @@ def run_lambda_regression(model_name, seed,
             f"dataset.additional_loading_params.lambda_outlier_threshold={LAMBDA_OUTLIER_THRESHOLD}",
             f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
             f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
+            f"dataset.additional_loading_params.f_as_log10={f_as_log10}",
             f"dataset.additional_loading_params.block_3_only={block_3_only}",
             "dataset.additional_loading_params.filter_type=all_samples"
         ]
         
         run_cmd(cmd, f"{model_name} | {exp_type_log} | num_pair={num_pair}")
 
-def run_f_regression(model_name, seed, standarization, block_3_split):
+def run_f_regression(model_name, seed, standarization, f_as_log10: bool, block_3_split):
     exp_type_log = f"F_REGRESSION"
     block_3_only = block_3_split == "none"
     block_3_split = block_3_split if block_3_split != "none" else 'null'
@@ -125,7 +126,7 @@ def run_f_regression(model_name, seed, standarization, block_3_split):
     normalize_eV = False    
 
     for num_pair in range(0, 10):
-        experiment_path = f"supervised/{seed}/f_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}/block_3_{block_3_split}/results"
+        experiment_path = f"supervised/{seed}/f_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}_f-as-log10-{f_as_log10}/block_3_{block_3_split}/results"
 
         cmd = [
             "python", "experiments/scripts/train_graph_level.py",
@@ -144,6 +145,7 @@ def run_f_regression(model_name, seed, standarization, block_3_split):
             f"dataset.additional_loading_params.lambda_outlier_threshold={LAMBDA_OUTLIER_THRESHOLD}",
             f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
             f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
+            f"dataset.additional_loading_params.f_as_log10={f_as_log10}",
             f"dataset.additional_loading_params.block_3_only={block_3_only}",
             "dataset.additional_loading_params.filter_type=all_samples"
         ]
@@ -181,7 +183,14 @@ def main():
         "--normalize_eV",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Whether to normalize eigenvalues (optional)"
+        help="Whether to turn lambdas into eV (optional)"
+    )
+
+    parser.add_argument(
+        "--f_as_log10",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Whether to turn f into log10(f) (optional)"
     )
 
     args = parser.parse_args()
@@ -192,6 +201,7 @@ def main():
     seed = args.seed
     standarization = args.standarization
     normalize_eV = args.normalize_eV
+    f_as_log10 = args.f_as_log10
     
     
 
@@ -203,7 +213,7 @@ def main():
                               standarization, normalize_eV, block_3_split)
     elif exp_to_run == 'f_regression':
         run_f_regression(model_name, seed,
-                standarization, block_3_split)
+                standarization, f_as_log10, block_3_split)
     else:
         print(f"Error: Unknown experiment '{exp_to_run}'.")
         sys.exit(1)
