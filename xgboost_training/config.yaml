@@ -61,8 +61,8 @@ binary_pairs:
   target_prefix: "f_binary"
 
 binary:
-  min_oscillation_strength: 0.010000000002
-  wavelength_range: [330, 650]
+  min_oscillation_strength: 0.01
+  wavelength_range: [350, 650]
   target_name: "has_uvvis_peak"
 
 multilabel:
