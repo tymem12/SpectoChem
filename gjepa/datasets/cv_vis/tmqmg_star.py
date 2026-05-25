@@ -3,6 +3,7 @@ import math
 from pathlib import Path
 from typing import Optional, Sequence, Tuple, List
 import torch
+import hashlib
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -38,7 +39,8 @@ class TMQMGStarDataset(InMemoryDataset):
         lambda_outlier_threshold : str = None,
         f_outlier_threshold : float = None,
         outlier_strategy: float = None,
-        convert_to_ev: bool = False
+        convert_to_ev: bool = False,
+        f_as_log10: bool = False
 
 
     ):  
@@ -65,6 +67,7 @@ class TMQMGStarDataset(InMemoryDataset):
         self.f_outlier_threshold = f_outlier_threshold
         self.outlier_strategy = outlier_strategy
         self.convert_to_ev = convert_to_ev
+        self.f_as_log10 = f_as_log10
 
         if self.prediction_type not in {"pairs", "vector", 'only_lambdas', 'binary_classification',
                                         'binary_vector_multiclass', 'binary_vector_multilabel',
@@ -120,24 +123,34 @@ class TMQMGStarDataset(InMemoryDataset):
             if self.pre_transform
             else "none"
         )
-        load_reprs_str =  os.path.basename(self.load_representations) if self.load_representations else 'False'
+        load_reprs_str = os.path.basename(self.load_representations) if self.load_representations else 'False'
 
-        filename = (
+        # 1. Build the unique configuration string representing all parameters
+        config_seed = (
             f"tmqmg_block3-{self.block_3_only}_"
             f"{pred_type}_{params_str}_"
+            f"vis-range_{vis_range_str}_"
+            f"y-{y_str}_"
+            f"load_reprs_str-{load_reprs_str}_"
             f"num_states-{self.num_states}_"
             f"filter_type-{self.filter_type}_min_f_val{self.min_f_value}_"
             f"filter_f_value-{self.filter_f_value}_"
-            f"lanbda_bucket_size-{self.lambda_bucket_size}_"
+            f"lambda_bucket_size-{self.lambda_bucket_size}_"
+            f"f_as_log10-{self.f_as_log10}_"
             f"mark-block3-{self.mark_block_3}_"
             f"outlier_str-{self.outlier_strategy}_"
             f"lambda_outlier_thr-{self.lambda_outlier_threshold}_"
             f"f_outlier_thr-{self.f_outlier_threshold}_"
             f"con_ev-{self.convert_to_ev}_"
-            f"pre{pre_transform}.pt"
+            f"pre{pre_transform}"
         )
 
-        filename = filename.replace("__", "_").replace("..", ".")
+        # Hash the string using SHA-256 and extract the first 32 characters
+        config_hash = hashlib.sha256(config_seed.encode('utf-8')).hexdigest()[:32]
+
+        # Create a compact, clean filename
+        filename = f"tmqmg_{config_hash}.pt"
+
         return [filename]
 
     @staticmethod
@@ -397,6 +410,28 @@ class TMQMGStarDataset(InMemoryDataset):
                                                            'lambda_regressor'}:
             ev_trainsitions = [(1239.8419843320026224 / lam, f) for lam, f in transitions]
             return ev_trainsitions
+        return transitions
+    def convert_f_to_log10(self, transitions):
+        if not transitions:
+            return []
+        if self.f_as_log10 and self.prediction_type in {"pairs", 'f_regressor'}:
+            def _f_to_log10(f: float):
+                # we could use 1e-8 but then the log10 f distribution has a spike at x=-8 and is completely flat (no data)
+                # for -8 < x < -4; so setting the threshold at 1e-5 we'll get tighter distribution with no gaps
+                #
+                # (Rafał also said that there's little to no difference between 1e-8 and 1e-5 threshold physically/chemically so
+                # can use 1e-5 if it helps)
+                f = np.maximum(f, 1e-5)
+
+                f = np.log10(f)
+
+                return f
+
+            transitions = [
+                (lam, _f_to_log10(f))
+                for lam, f in transitions
+            ]
+
         return transitions
 
     def process(self):
