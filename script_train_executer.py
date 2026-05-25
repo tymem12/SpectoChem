@@ -44,10 +44,9 @@ def run_cmd(cmd, log_info):
     
     int_inter += 1
 
-
 def run_binary(model_name, seed, block_3_split):
     for min_f_value in [0.01]:
-        for metric, metric_mode in [('F1', 'max')]:
+        for metric, metric_mode in [('AUROC', 'max')]:
             # experiment_path = f"supervised/{data_time}/binary_classification/{model_name}/{exp_param_str}/UMA_full_embedding/min_f_value_{min_f_value}/metric_{metric}/330-650/results"
             experiment_path = f"supervised/{seed}/binary_classification/{model_name}/block_3_{block_3_split}/results"
             block_3_only = block_3_split == "none"
