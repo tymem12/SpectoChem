@@ -68,7 +68,7 @@ def run_binary(model_name, seed, block_3_split):
                 f"dataset.main_metric={metric}",
                 f"dataset.metric_mode={metric_mode}",
                 f"dataset.additional_loading_params.outlier_strategy={OUTLIER_STRATEGY}",
-                f"dataset.additional_loading_params.lambda_outlier_thresohld={LAMBDA_OUTLIER_THRESHOLD}",
+                f"dataset.additional_loading_params.lambda_outlier_threshold={LAMBDA_OUTLIER_THRESHOLD}",
                 f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
 
             ]
