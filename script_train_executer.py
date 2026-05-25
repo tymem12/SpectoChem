@@ -12,11 +12,6 @@ data_time = now.strftime("%Y-%m-%d_%H.%M.%S")
 int_inter = 0  # Global counter
 
 LAST_EXP = -1
-def get_prediction_head_params():
-    hidden_channels = [256]
-    activation = 'silu'
-    dropout = 0.2
-    return hidden_channels, activation, dropout
 
 def get_config_string(config):
     """Creates a short folder string representation of the config."""
@@ -29,6 +24,9 @@ def get_config_string(config):
 def get_backbone_args(config):
     """Creates the list of command line arguments for the backbone config."""
     return [f"model.backbone.{k}={v}" for k, v in config.items()]
+
+LAMBDA_OUTLIER_THRESHOLD = 1327.9505300000078
+OUTLIER_STRATEGY = 'whole-compound-outlier-removal'
 
 def run_cmd(cmd, log_info):
     """Centralized function to execute a command and manage the counter."""
@@ -54,10 +52,8 @@ def run_binary(model_name, seed, block_3_split):
             experiment_path = f"supervised/{seed}/binary_classification/{model_name}/block_3_{block_3_split}/results"
             block_3_only = block_3_split == "none"
             block_3_split = block_3_split if block_3_split != "none" else 'null'
-            hidden_channels, activation, dropout = get_prediction_head_params()
             
-            outlier_strategy = 'whole-compound-outlier-removal'
-            lambda_outlier_threshold = 1350
+
             f_outlier_threshold = 'null'
             cmd = [
                 "python", "experiments/scripts/train_graph_level.py",
@@ -71,12 +67,9 @@ def run_binary(model_name, seed, block_3_split):
                 f"dataset.additional_loading_params.block_3_only={block_3_only}",
                 f"dataset.main_metric={metric}",
                 f"dataset.metric_mode={metric_mode}",
-                f"dataset.predictor_kwargs.hidden_channels={hidden_channels}",
-                f"dataset.predictor_kwargs.activation={activation}",
-                f"dataset.additional_loading_params.outlier_strategy={outlier_strategy}",
-                f"dataset.additional_loading_params.lambda_outlier_threshold={lambda_outlier_threshold}",
+                f"dataset.additional_loading_params.outlier_strategy={OUTLIER_STRATEGY}",
+                f"dataset.additional_loading_params.lambda_outlier_thresohld={LAMBDA_OUTLIER_THRESHOLD}",
                 f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
-                f"dataset.predictor_kwargs.dropout={dropout}"
 
             ]
             run_cmd(cmd, f"{model_name} | BINARY | f={min_f_value} | {metric}")
@@ -89,13 +82,9 @@ def run_lambda_regression(model_name, seed,
     block_3_only = block_3_split == "none"
     block_3_split = block_3_split if block_3_split != "none" else 'null'
     min_f_value = -1
-    outlier_strategy = 'whole-compound-outlier-removal'
-    lambda_outlier_threshold = 1350
+
     f_outlier_threshold = 'null'
     sort_by_max_f = False
-    hidden_channels, activation, dropout = get_prediction_head_params()
-
-
 
     
 
@@ -114,15 +103,12 @@ def run_lambda_regression(model_name, seed,
             f"dataset.additional_loading_params.min_f_value={min_f_value}",
             f"dataset.additional_loading_params.filter_f_value={min_f_value}",
             f"dataset.additional_loading_params.sort_by_max_f={sort_by_max_f}",
-            f"dataset.additional_loading_params.outlier_strategy={outlier_strategy}",
+            f"dataset.additional_loading_params.outlier_strategy={OUTLIER_STRATEGY}",
             f"dataset.additional_loading_params.standarize_lambda={standarization}",
-            f"dataset.additional_loading_params.lambda_outlier_threshold={lambda_outlier_threshold}",
+            f"dataset.additional_loading_params.lambda_outlier_threshold={LAMBDA_OUTLIER_THRESHOLD}",
             f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
             f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
             f"dataset.additional_loading_params.block_3_only={block_3_only}",
-            f"dataset.predictor_kwargs.hidden_channels={hidden_channels}",
-            f"dataset.predictor_kwargs.activation={activation}",
-            f"dataset.predictor_kwargs.dropout={dropout}",
             "dataset.additional_loading_params.filter_type=all_samples"
         ]
         
@@ -134,14 +120,9 @@ def run_f_regression(model_name, seed, standarization, block_3_split):
     block_3_split = block_3_split if block_3_split != "none" else 'null'
 
     min_f_value = -1
-    outlier_strategy = 'whole-compound-outlier-removal'
-    lambda_outlier_threshold = 1350
     f_outlier_threshold = 'null'
     sort_by_max_f = False
-    normalize_eV = False
-
-    hidden_channels, activation, dropout = get_prediction_head_params()
-    
+    normalize_eV = False    
 
     for num_pair in range(0, 10):
         experiment_path = f"supervised/{seed}/f_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}/block_3_{block_3_split}/results"
@@ -158,15 +139,12 @@ def run_f_regression(model_name, seed, standarization, block_3_split):
             f"dataset.additional_loading_params.min_f_value={min_f_value}",
             f"dataset.additional_loading_params.filter_f_value={min_f_value}",
             f"dataset.additional_loading_params.sort_by_max_f={sort_by_max_f}",
-            f"dataset.additional_loading_params.outlier_strategy={outlier_strategy}",
+            f"dataset.additional_loading_params.outlier_strategy={OUTLIER_STRATEGY}",
             f"dataset.additional_loading_params.standarize_f={standarization}",
-            f"dataset.additional_loading_params.lambda_outlier_threshold={lambda_outlier_threshold}",
+            f"dataset.additional_loading_params.lambda_outlier_threshold={LAMBDA_OUTLIER_THRESHOLD}",
             f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
             f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
             f"dataset.additional_loading_params.block_3_only={block_3_only}",
-            f"dataset.predictor_kwargs.hidden_channels={hidden_channels}",
-            f"dataset.predictor_kwargs.activation={activation}",
-            f"dataset.predictor_kwargs.dropout={dropout}",
             "dataset.additional_loading_params.filter_type=all_samples"
         ]
         
@@ -202,7 +180,7 @@ def main():
     parser.add_argument(
         "--normalize_eV",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help="Whether to normalize eigenvalues (optional)"
     )
 
