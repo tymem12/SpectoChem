@@ -411,6 +411,7 @@ class TMQMGStarDataset(InMemoryDataset):
             ev_trainsitions = [(1239.8419843320026224 / lam, f) for lam, f in transitions]
             return ev_trainsitions
         return transitions
+
     def convert_f_to_log10(self, transitions):
         if not transitions:
             return []
@@ -510,12 +511,19 @@ class TMQMGStarDataset(InMemoryDataset):
                 kwargs['representation'] = emb
 
             transitions = self.filter_data_with_criterion(row, self.filter_type)
+
             transitions = self.remove_outliers(transitions)
             if not transitions:
                 continue
+
             transitions = self.convert_lambdas_to_ev(transitions)
             if not transitions:
                 continue
+
+            transitions = self.convert_f_to_log10(transitions)
+            if not transitions:
+                continue
+
             y = self._prepare_the_output_format(transitions)
             if y is not None and self.prediction_type == 'binary_classification':
                 if y.item() == 1:
