@@ -93,7 +93,9 @@ class SupervisedGraphLevelGNN(LightningModule):
 
     def test_step(self, batch: Data, batch_idx: int) -> Tensor:
         loss = self._shared_step(batch, split="test")
+
         logits = self.forward(batch)
+
         self._test_outputs.append(
             {
                 "origin_id": batch.origin_id,
@@ -102,6 +104,7 @@ class SupervisedGraphLevelGNN(LightningModule):
             }
         )
         self.log("test_loss", loss, batch_size=batch.batch_size, prog_bar=False)
+
         standarized_lambda_val = StandarizerSingletonLambda.get_values()
         standarized_f_val = StandarizerSingletonF.get_values()
         if standarized_lambda_val['standarize']:
@@ -150,7 +153,6 @@ class SupervisedGraphLevelGNN(LightningModule):
 
 
     def on_test_end(self) -> None:
-
         output_params = self.config.dataset.additional_loading_params
 
         if output_params['prediction_type'] == 'binary_vector_multiclass':
@@ -234,14 +236,39 @@ class SupervisedGraphLevelGNN(LightningModule):
 
         return z, y
 
-    def configure_optimizers(self) -> dict[str, Any]:  # type: ignore[override]
+    def configure_optimizers(self) -> dict[str, Any]:
         optim = AdamW(
             self.parameters(),
             lr=self.config.training.learning_rate,
             weight_decay=self.config.training.weight_decay,
         )
+        
         if self.config.training.scheduler_config is None:
             return {"optimizer": optim}
 
-        scheduler = LinearWarmupCosineAnnealingLR(optim, **self.config.training.scheduler_config)
-        return {"optimizer": optim, "lr_scheduler": scheduler}
+        # Calculate how many batches (steps) are in a single epoch
+        # self.trainer.estimated_stepping_batches gives the total steps for the whole training run
+        steps_per_epoch = self.trainer.estimated_stepping_batches // self.trainer.max_epochs
+
+        # Extract config and convert epochs to steps
+        sched_cfg = dict(self.config.training.scheduler_config)
+        warmup_steps = sched_cfg.pop("warmup_epochs") * steps_per_epoch
+        max_steps = self.trainer.estimated_stepping_batches
+
+        # Instantiate the scheduler using steps instead of epochs
+        scheduler = LinearWarmupCosineAnnealingLR(
+            optim, 
+            warmup_epochs=warmup_steps, 
+            max_epochs=max_steps, 
+            **sched_cfg
+        )
+        
+        # Return with the Lightning dictionary format to enforce per-step updates
+        return {
+            "optimizer": optim, 
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1
+            }
+        }

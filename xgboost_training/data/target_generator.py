@@ -9,7 +9,7 @@ class TargetGenerator:
         self.num_pairs = config.targets['num_pairs']
         self.binary_config = getattr(config, 'binary', {})
         self.min_strength = self.binary_config.get('min_oscillation_strength', 0.01)
-        self.wavelength_range = self.binary_config.get('wavelength_range', [330, 650])
+        self.wavelength_range = self.binary_config.get('wavelength_range', [350, 650])
         self.target_name = self.binary_config.get('target_name', 'has_uvvis_peak')
         
     def get_all_pairs(self, df):
