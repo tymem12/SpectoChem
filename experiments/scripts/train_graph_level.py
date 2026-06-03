@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import time
 
 import hydra
 import torch
@@ -64,11 +65,31 @@ def main(cfg: DictConfig) -> None:
 
     trainer.fit(model, datamodule=datamodule)
 
+
+    start_train_time = time.perf_counter()
+    trainer.fit(model, datamodule=datamodule)
+    end_train_time = time.perf_counter()
+
+    train_duration_sec = end_train_time - start_train_time
+    train_epochs = trainer.current_epoch
+
     seed_everything(config.training.random_seed, workers=True)
+    
+    start_test_time = time.perf_counter()
     test_metrics, *_ = trainer.test(model, datamodule=datamodule, ckpt_path="best")
+    end_test_time = time.perf_counter()
+
+    test_duration_sec = end_test_time - start_test_time
 
     assert trainer.log_dir is not None
-    save_metrics(test_metrics, Path(trainer.log_dir))
+    
+    timing_metrics = {
+        "debug_train_time_seconds": train_duration_sec,
+        "debug_train_epochs": train_epochs,
+        "debug_test_time_seconds": test_duration_sec
+    }
+
+    test_metrics.update(timing_metrics)
 
     if SAVE_EMBEDDINGS:
         save_embeddings(model, trainer, datamodule, trainer.log_dir)
