@@ -18,7 +18,7 @@ metric_mode: min
 main_metric: MAE
 additional_loading_params: 
   prediction_type: vector
-  vis_range: [370, 680]
+  vis_range: [350, 650]
   num_states: 4
   filter_type: one_visible_lambdas    #all_samples 
   block_3_only: True

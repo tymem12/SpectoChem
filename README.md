@@ -37,7 +37,7 @@ Każdy output zawiera następujące pola:
 additional_loading_params: 
   prediction_type: binary_classification
   num_states: 1
-  vis_range: [380, 650]
+  vis_range: [350, 650]
   block_3_only: True
   filter_type: all_samples 
   filter_f_value: -1
@@ -92,7 +92,7 @@ additional_loading_params:
 
 ### Pozostałe parametry
 
-* **vis_range: [380, 650]**
+* **vis_range: [350, 650]**
   Definicja zakresu widzialnego.
 
 * **block_3_only: True**
@@ -163,7 +163,7 @@ main_metric: F1  #AUROC  Accuracy
 additional_loading_params: 
   prediction_type: binary_classification
   num_states: 1
-  vis_range: [330, 650]
+  vis_range: [350, 650]
   block_3_only: True
   filter_type: all_samples    # all_samples
   filter_f_value: -1
@@ -197,7 +197,7 @@ main_metric: MAE
 additional_loading_params: 
   prediction_type: only_lambdas
   num_states: 1
-  vis_range: [330, 650]
+  vis_range: [350, 650]
   block_3_only: True
   filter_type: all_samples #all_samples
   filter_f_value: -1
@@ -231,7 +231,7 @@ main_metric: MAE
 additional_loading_params: 
   prediction_type: pairs
   num_states: 1
-  vis_range: [330, 650]
+  vis_range: [350, 650]
   block_3_only: True
   filter_type: all_samples   
   min_f_value: -1
@@ -267,7 +267,7 @@ main_metric: F1
 additional_loading_params: 
   prediction_type: binary_vector_multiclass
   num_states: 1
-  vis_range: [330, 650]
+  vis_range: [350, 650]
   block_3_only: True
   filter_type: one_visible_lambda 
   min_f_value: 0.01
@@ -302,7 +302,7 @@ main_metric: F1
 additional_loading_params: 
   prediction_type: binary_vector_multilabel
   num_states: 1
-  vis_range: [330, 650]
+  vis_range: [350, 650]
   block_3_only: True
   filter_type: one_visible_lambda  
   min_f_value: 0.01

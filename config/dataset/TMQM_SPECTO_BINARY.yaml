@@ -14,12 +14,12 @@ predictor_kwargs:
 split_ratios: [0.8, 0.1]
 block_3_split_mode: null
 group_by_isomers: true
-metric_mode: min
-main_metric: loss  #AUROC  Accuracy
+metric_mode: max
+main_metric: AUROC  #AUROC  Accuracy
 additional_loading_params: 
   prediction_type: binary_classification
   num_states: 1
-  vis_range: [330, 650]
+  vis_range: [350, 650]
   block_3_only: True
   filter_type: all_samples    # all_samples
   filter_f_value: -1
@@ -30,6 +30,7 @@ additional_loading_params:
   load_representations: ''
   outlier_strategy: whole-compound-outlier-removal
   convert_to_ev: false
+  f_as_log10: false
   f_outlier_threshold: null # 0.5 null
-  lambda_outlier_threshold: 1350  #null 1500
+  lambda_outlier_threshold: 1327.9505300000078  #null 1500
   
