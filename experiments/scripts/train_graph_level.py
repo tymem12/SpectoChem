@@ -91,6 +91,8 @@ def main(cfg: DictConfig) -> None:
 
     test_metrics.update(timing_metrics)
 
+    save_metrics(test_metrics, Path(trainer.log_dir))
+
     if SAVE_EMBEDDINGS:
         save_embeddings(model, trainer, datamodule, trainer.log_dir)
 
