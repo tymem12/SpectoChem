@@ -4,7 +4,7 @@ import datetime
 import argparse
 import sys
 
-
+from pathlib import Path
 
 # 1. Dynamic Timestamp
 now = datetime.datetime.now()
@@ -52,6 +52,10 @@ def run_binary(model_name, seed, block_3_split):
             block_3_only = block_3_split == "none"
             block_3_split = block_3_split if block_3_split != "none" else 'null'
             
+            metrics_path = Path("data", "experiments", experiment_path, "lightning_logs", f"version_{seed}", "metrics.json")
+            if metrics_path.exists():
+                print(f"Skipping existing: {experiment_path}")
+                continue
 
             f_outlier_threshold = 'null'
             cmd = [
@@ -126,6 +130,11 @@ def run_f_regression(model_name, seed, standarization, f_as_log10: bool, block_3
 
     for num_pair in range(0, 10):
         experiment_path = f"supervised/{seed}/f_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}_f-as-log10-{f_as_log10}/block_3_{block_3_split}/results"
+
+        metrics_path = Path("data", "experiments", experiment_path, "lightning_logs", f"version_{seed}", "metrics.json")
+        if metrics_path.exists():
+            print(f"Skipping existing: {experiment_path}")
+            continue
 
         cmd = [
             "python", "experiments/scripts/train_graph_level.py",
