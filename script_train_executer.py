@@ -94,6 +94,11 @@ def run_lambda_regression(model_name, seed,
     for num_pair in range(0, 10):
         experiment_path = f"supervised/{seed}/lambda_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}_f-as-log10-{f_as_log10}/block_3_{block_3_split}/results"
 
+        metrics_path = Path("data", "experiments", experiment_path, "lightning_logs", f"version_{seed}", "metrics.json")
+
+        if metrics_path.exists():
+            print(f"Skipping existing: {experiment_path}")
+            continue
         cmd = [
             "python", "experiments/scripts/train_graph_level.py",
             "+exp=TMQM_SPECTO_LAMBDA_REGRESSOR",
