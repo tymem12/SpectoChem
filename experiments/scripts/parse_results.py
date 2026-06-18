@@ -29,8 +29,10 @@ from gjepa.utils import spectral_loss
 SEEDS = [2137, 42, 1234]
 BASE_MODELS = ["schnet", "gine", "gat", "gcn"]
 MODELS = BASE_MODELS + ["dummy"]
-BLOCK_SPLITS = ["none", "test"]
-BASE_DIR = Path("supervised")
+BLOCK_SPLITS_BINARY = ["none", "test"]
+BLOCK_SPLITS_REGRESSION = ["null", "test"]
+
+BASE_DIR = Path("data/experiments/supervised")
 
 # --- DUMMY BASELINE GENERATOR ---
 
@@ -209,14 +211,16 @@ def ensure_dummy_baselines():
     """Loops through expected grid to discover standard runs and triggers dummy generation."""
     print("Checking for missing dummy baselines...")
     for seed in SEEDS:
-        for block in BLOCK_SPLITS:
+        for block in BLOCK_SPLITS_BINARY:
             # 1. Binary
             for m in BASE_MODELS:
                 p = BASE_DIR / str(seed) / "binary_classification" / m / f"block_3_{block}" / "results" / "lightning_logs" / f"version_{seed}"
                 if p.exists() and (p / "metrics.json").exists():
                     create_dummy_baseline(p)
                     break
-                    
+
+    for seed in SEEDS:
+        for block in BLOCK_SPLITS_REGRESSION:
             # 2. Regression
             for state in range(10):
                 # F Regressor
@@ -403,7 +407,7 @@ def extract_experiment_data() -> Tuple[List[Dict], List[Dict]]:
 
     for seed in SEEDS:
         for model in MODELS:
-            for block in BLOCK_SPLITS:
+            for block in BLOCK_SPLITS_BINARY:
                 # 1. Binary Classification
                 bin_path = BASE_DIR / str(seed) / "binary_classification" / model / f"block_3_{block}" / "results" / "lightning_logs" / f"version_{seed}"
                 
@@ -424,6 +428,9 @@ def extract_experiment_data() -> Tuple[List[Dict], List[Dict]]:
                     
                 binary_records.append(record_bin)
 
+    for seed in SEEDS:
+        for model in MODELS:
+            for block in BLOCK_SPLITS_REGRESSION:
                 # 2. Regression (Iterate 10 states)
                 for state in range(10):
                     # F Regressor
