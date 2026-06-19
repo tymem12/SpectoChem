@@ -87,34 +87,31 @@ def stmse(model_spectra: torch.tensor, target_spectra: torch.tensor, threshold: 
 
 def srmse(model_spectra: torch.tensor, target_spectra: torch.tensor, threshold: float = 1e-8, eps: float = 1e-8, torch_device: str = 'cpu') -> torch.tensor:
     # normalize the model spectra before comparison
-    nan_mask=torch.isnan(target_spectra)+torch.isnan(model_spectra)
-    nan_mask=nan_mask.to(device=torch_device)
-    zero_sub=torch.zeros_like(target_spectra,device=torch_device)
+    nan_mask = torch.isnan(target_spectra) | torch.isnan(model_spectra)
+    nan_mask = nan_mask.to(device=torch_device)
+    zero_sub = torch.zeros_like(target_spectra, device=torch_device)
+    
     model_spectra = model_spectra.to(torch_device)
     model_spectra[model_spectra < threshold] = threshold
-    print('model_spectra ;', model_spectra)
-#
-    #sum_model_spectra = torch.sum(torch.where(nan_mask,zero_sub,model_spectra),axis=1)
-    #sum_model_spectra = torch.unsqueeze(sum_model_spectra,axis=1)
-    #print('ttt', sum_model_spectra)
-    #model_spectra = torch.div(model_spectra,sum_model_spectra)
-    #print('model_spectra ;', model_spectra)
-# 
-    sum_model_spectra, index1 = torch.max(torch.where(nan_mask,zero_sub,model_spectra), 0)
-    print('ttt', sum_model_spectra)
-    model_spectra = torch.div(model_spectra,sum_model_spectra)
-    print('model_spectra ;', model_spectra)
-   # calculate loss value
-    if not isinstance(target_spectra,torch.Tensor):
+    
+    # Corrected normalization: sum across axis 1 (the spectrum bins)
+    sum_model_spectra = torch.sum(torch.where(nan_mask, zero_sub, model_spectra), axis=1)
+    sum_model_spectra = torch.unsqueeze(sum_model_spectra, axis=1)
+    model_spectra = torch.div(model_spectra, sum_model_spectra)
+    
+    # Ensure targets are on the correct device
+    if not isinstance(target_spectra, torch.Tensor):
         target_spectra = torch.tensor(target_spectra)
     target_spectra = target_spectra.to(torch_device)
-    loss = torch.ones_like(target_spectra)
-    loss = loss.to(torch_device)
-    target_spectra[nan_mask]=1
-    model_spectra[nan_mask]=1
-    print('target_spectra: ', target_spectra)
-    loss = torch.mean((model_spectra-target_spectra)**2,dim=1)
-    loss = torch.sqrt(loss + eps)
+    
+    # Mask NaNs with 1 to safely bypass calculation errors
+    target_spectra[nan_mask] = 1.0
+    model_spectra[nan_mask] = 1.0
+    
+    # Calculate Mean Squared Error, then take the Root (with eps for stability)
+    mse = torch.mean((model_spectra - target_spectra)**2, dim=1)
+    loss = torch.sqrt(mse + eps)
+    
     return loss
 
 def smse(model_spectra: torch.tensor, target_spectra: torch.tensor, threshold: float = 1e-8, eps: float = 1e-8, torch_device: str = 'cpu') -> torch.tensor:
@@ -138,34 +135,37 @@ def smse(model_spectra: torch.tensor, target_spectra: torch.tensor, threshold: f
     loss = torch.mean((model_spectra-target_spectra)**2,dim=1)
     return loss
 
-def wasserstein(model_spectra: torch.tensor, target_spectra: torch.tensor, threshold: float = 1e-8, eps: float = 1e-8, torch_device: str = 'cpu') -> torch.tensor:
+def wasserstein(model_spectra: torch.tensor, target_spectra: torch.tensor, threshold: float = 1e-8, eps: float = 1e-8, torch_device: str = 'cpu', x_min: float = 0.0, x_max: float = 12.0) -> torch.tensor:
     # normalize the model spectra before comparison
-    nan_mask=torch.isnan(target_spectra)+torch.isnan(model_spectra)
-    nan_mask=nan_mask.to(device=torch_device)
-    zero_sub=torch.zeros_like(target_spectra,device=torch_device)
+    nan_mask = torch.isnan(target_spectra) | torch.isnan(model_spectra)
+    nan_mask = nan_mask.to(device=torch_device)
+    zero_sub = torch.zeros_like(target_spectra, device=torch_device)
+    
     model_spectra = model_spectra.to(torch_device)
     model_spectra[model_spectra < threshold] = threshold
-    sum_model_spectra = torch.sum(torch.where(nan_mask,zero_sub,model_spectra),axis=1)
-    sum_model_spectra = torch.unsqueeze(sum_model_spectra,axis=1)
-    model_spectra = torch.div(model_spectra,sum_model_spectra)
+    sum_model_spectra = torch.sum(torch.where(nan_mask, zero_sub, model_spectra), axis=1)
+    sum_model_spectra = torch.unsqueeze(sum_model_spectra, axis=1)
+    model_spectra = torch.div(model_spectra, sum_model_spectra)
+    
     # cumulative spectra
-    if not isinstance(target_spectra,torch.Tensor):
+    if not isinstance(target_spectra, torch.Tensor):
         target_spectra = torch.tensor(target_spectra)
     target_spectra = target_spectra.to(torch_device)
-    target_spectra[nan_mask]=0
-    model_spectra[nan_mask]=0
-    cum_model = torch.ones_like(model_spectra)
-    cum_model = cum_model.to(torch_device)
-    cum_targets = torch.ones_like(target_spectra)
-    cum_targets = cum_targets.to(torch_device)
-    cum_model = torch.cumsum(model_spectra,dim=1)
-    cum_targets = torch.cumsum(target_spectra,dim=1)
+    target_spectra[nan_mask] = 0.0
+    model_spectra[nan_mask] = 0.0
+    
+    cum_model = torch.cumsum(model_spectra, dim=1)
+    cum_targets = torch.cumsum(target_spectra, dim=1)
+    
     # calculate loss
-    loss = torch.ones_like(target_spectra)
-    loss = loss.to(torch_device)
-    loss = torch.add(cum_model,torch.mul(cum_targets,-1))
-    loss = torch.abs(loss)
-    loss = torch.sum(loss,axis=1)
+    loss = torch.abs(cum_model - cum_targets)
+    loss = torch.sum(loss, axis=1)
+    
+    # --- NEW: Convert from bin distance to physical eV distance ---
+    num_points = model_spectra.shape[1]
+    delta_x = (x_max - x_min) / (num_points - 1)
+    loss = loss * delta_x
+    
     return loss
 
 def pre_normalize_targets(targets: List[List[float]], threshold: float = 1e-8, torch_device: str = 'cpu', batch_size: int = 50) -> List[List[float]]:
@@ -173,7 +173,7 @@ def pre_normalize_targets(targets: List[List[float]], threshold: float = 1e-8, t
 
     num_iters, iter_step = len(targets), batch_size
 
-    for i in trange(0, num_iters, iter_step):
+    for i in trange(0, num_iters, iter_step, desc="Normalizing Targets"):
         with torch.no_grad():
             # Prepare batch
             batch = targets[i:i + iter_step]
