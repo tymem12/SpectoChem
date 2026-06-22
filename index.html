@@ -215,16 +215,7 @@
                 display: grid;
                 grid-template-columns: 1.3fr 1fr;
                 gap: 2rem;
-                align-items: stretch;
-            }
-            .col {
-                display: flex;
-                flex-direction: column;
-                height: 100%;
-            }
-            .col .glass-card:last-child {
-                flex-grow: 1;
-                margin-bottom: 0;
+                align-items: start;
             }
         }
 
@@ -269,9 +260,6 @@
 
         .logos img {
             max-height: 90px;
-            background: #ffffff;
-            padding: 8px;
-            border-radius: 12px;
         }
 
         /* Animations */
@@ -504,12 +492,14 @@
             </div>
 
             <!-- Full Width Sections -->
-            <section class="glass-card animate-up" style="animation-delay: 0.7s; " id="publication-app">
+            <section class="glass-card animate-up" style="animation-delay: 0.7s; margin-top: 2rem;"
+                id="publication-app">
                 <h2>Interaktywna Aplikacja</h2>
                 <p>Wypróbuj naszą aplikację stworzoną do wizualizacji i analizy właściwości cząsteczek
                     fotokatalitycznych.</p>
                 <div style="text-align: center; margin-top: 3rem; margin-bottom: 2rem;">
-                    <a href="https://rwozn.github.io/spectochem_app/" target="_blank" rel="noopener noreferrer" class="cta-button">
+                    <a href="https://rwozn.github.io/spectochem_app/" target="_blank" rel="noopener noreferrer"
+                        class="cta-button">
                         Try it now!
                     </a>
                 </div>
@@ -526,8 +516,8 @@
 
         <footer>
             <div class="logos">
-                <img src="img/logo_spectochem.png" alt="SpectoChem Logo">
-                <img src="img/logos_combined.png" alt="Instytucje">
+                <img src="img/logoPWr_PL_poziom_wDwa_biale.png" alt="Politechnika Wrocławska Logo">
+                <img src="img/KSI_logo_color_h_pl_med.png" alt="KSI Logo">
             </div>
             <p style="margin-top: 2rem; font-size: 0.9rem;">&copy; 2024 SpectoChem Team. Wszelkie prawa zastrzeżone.</p>
         </footer>
