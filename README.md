@@ -32,7 +32,7 @@ The SpectoChem pipeline transforms raw molecular data into photocatalytic predic
 ### Detailed Pipeline
 
 1. **Input**: Molecule as 3D atomic coordinates (x, y, z) and atomic numbers
-2. **Graph Construction**: Build molecular graph with edges based on distance cutoff (default: 5.0 Å)
+2. **Graph Construction**: Build molecular graph with edges based on distance cutoff (default: 10.0 Å)
 3. **Node Embedding**: Embed atomic numbers as initial vertex features
 4. **Message Passing**: GNN layers propagate geometric and chemical information across the graph
 5. **Readout**: Pool vertex representations into a single graph-level embedding
@@ -110,7 +110,7 @@ Experiments are conducted on the **tmQMg\*** dataset, one of the largest publicl
 | Property | Value |
 |----------|-------|
 | **Type** | Organic transition metal complexes |
-| **Size** | ~76,000 molecules |
+| **Size** | 74,273 molecules |
 | **Geometry** | DFT-optimized 3D structures |
 | **Properties** | Excited states (λ, f), ground-state properties |
 | **Source** | Quantum chemistry (TD-DFT) |
