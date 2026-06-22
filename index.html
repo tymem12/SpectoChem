@@ -14,13 +14,13 @@
     <!-- Open Graph / Social Media Preview -->
     <meta property="og:title" content="SpectoChem | Wykrywanie fotokatalizatorów">
     <meta property="og:description" content="SpectoChem: system umożliwiający wykrywanie cząsteczek o właściwościach fotokatalitycznych na podstawie geometrycznych cech.">
-    <meta property="og:image" content="img/logo_spectochem.png">
+    <meta property="og:image" content="https://tymem12.github.io/SpectoChem/img/logo_spectochem.png">
     <meta property="og:type" content="website">
     
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="SpectoChem | Wykrywanie fotokatalizatorów">
     <meta name="twitter:description" content="SpectoChem: system umożliwiający wykrywanie cząsteczek o właściwościach fotokatalitycznych na podstawie geometrycznych cech.">
-    <meta name="twitter:image" content="img/logo_spectochem.png">
+    <meta name="twitter:image" content="https://tymem12.github.io/SpectoChem/img/logo_spectochem.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -63,7 +63,6 @@
         header {
             text-align: center;
             padding: 4rem 1rem;
-            animation: fadeInDown 1s ease-out;
         }
 
         h1 {
@@ -276,34 +275,7 @@
             max-height: 90px;
         }
 
-        /* Animations */
-        @keyframes fadeInDown {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .animate-up {
-            animation: fadeInUp 0.8s ease-out forwards;
-        }
+        
     </style>
 </head>
 
@@ -326,7 +298,7 @@
         <main>
             <div class="grid-2">
                 <div class="col">
-                    <section class="glass-card animate-up" style="animation-delay: 0.1s;">
+                    <section class="glass-card">
                         <h2>Problem</h2>
                         <p>Wykrywanie fotokatalizatorów chemicznych jest jednym z kluczowych zagadnień chemii
                             materiałowej ze względu na ich szerokie zastosowanie w takich dziedzinach jak energetyka czy
@@ -343,7 +315,7 @@
                         </div>
                     </section>
 
-                    <section class="glass-card animate-up" style="animation-delay: 0.2s;">
+                    <section class="glass-card">
                         <h2>Dwa Poziomy Predykcji</h2>
                         <p>Projekt SpectoChem zawiera modele, które pozwalają przewidywać w dwóch opcjach:</p>
                         <ul>
@@ -361,7 +333,7 @@
                         </div>
                     </section>
 
-                    <section class="glass-card animate-up" style="animation-delay: 0.3s;">
+                    <section class="glass-card">
                         <h2>Architektura Rozwiązania</h2>
                         <p>Nasze rozwiązanie składa się z trzech głównych komponentów:</p>
                         <ul>
@@ -383,7 +355,7 @@
                 </div>
 
                 <div class="col">
-                    <section class="glass-card animate-up" style="animation-delay: 0.4s;">
+                    <section class="glass-card">
                         <h2>Eksperymenty i Dane</h2>
                         <p>Eksperymenty przeprowadzono na zbiorze <strong>tmQMg*</strong>, zawierającym informacje o
                             stanach energetycznych dla ponad 74 tysięcy cząsteczek kompleksów metali przejściowych.
@@ -397,7 +369,7 @@
                         </div>
                     </section>
 
-                    <section class="glass-card animate-up" style="animation-delay: 0.5s;">
+                    <section class="glass-card">
                         <h2>Wyniki</h2>
                         <p>Spośród wszystkich analizowanych architektur najwyższą skuteczność osiągnął model
                             wykorzystujący <em>SchNet</em> jako grafową sieć neuronową. Wynik ten potwierdza efektywność
@@ -489,7 +461,7 @@
                         </div>
                     </section>
 
-                    <section class="glass-card animate-up" style="animation-delay: 0.6s;">
+                    <section class="glass-card">
                         <h2>Efekty projektu</h2>
                         <ul>
                             <li><strong>Przygotowanie publikacji</strong> – <em>Learning Light: Predicting UV-Vis
@@ -503,7 +475,7 @@
 
                     </section>
 
-                    <section class="glass-card animate-up" style="animation-delay: 0.7s;" id="publication-app">
+                    <section class="glass-card" id="publication-app">
                         <h2>Interaktywna Aplikacja</h2>
                         <p>Wypróbuj naszą aplikację stworzoną do wizualizacji i analizy właściwości cząsteczek
                             fotokatalitycznych.</p>
@@ -518,7 +490,7 @@
             </div>
 
             <!-- Full Width Sections -->
-            <section class="glass-card animate-up" style="animation-delay: 0.8s;">
+            <section class="glass-card">
                 <h2>Podsumowanie</h2>
                 <p>Przeprowadzone eksperymenty pokazują, że zaproponowana metoda skutecznie przewiduje właściwości
                     fotokatalityczne cząsteczek i stanowi obiecujące narzędzie wspomagające odkrywanie nowych
@@ -537,23 +509,7 @@
 
     </div>
 
-    <!-- Scroll Animations Observer -->
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting) {
-                        entry.target.style.animationPlayState = 'running';
-                    }
-                });
-            }, { threshold: 0.1 });
-
-            document.querySelectorAll('.animate-up').forEach((el) => {
-                el.style.animationPlayState = 'paused';
-                observer.observe(el);
-            });
-        });
-    </script>
+    
 </body>
 
 </html>
