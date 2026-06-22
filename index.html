@@ -1,59 +1,556 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spectochem</title>
+    <title>SpectoChem | Wykrywanie fotokatalizatorów</title>
+    <meta name="description"
+        content="SpectoChem: system umożliwiający wykrywanie cząsteczek o właściwościach fotokatalitycznych na podstawie geometrycznych cech.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary: #10b981;
+            --primary-dark: #059669;
+            --bg-color: #0f172a;
+            --surface-color: rgba(30, 41, 59, 0.7);
+            --text-main: #f8fafc;
+            --text-muted: #cbd5e1;
+            --border-radius: 16px;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
         }
 
         body {
-            font-family: Arial, sans-serif;
-            background: #f5f7fa;
-            color: #333;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+                radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 0.4) 0, transparent 50%),
+                radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 0.4) 0, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            line-height: 1.6;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
         }
 
         .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        /* Header / Hero */
+        header {
             text-align: center;
-            padding: 2rem;
+            padding: 4rem 1rem;
+            animation: fadeInDown 1s ease-out;
         }
 
         h1 {
-            font-size: 3rem;
+            font-size: clamp(2.5rem, 6vw, 4.5rem);
+            font-weight: 800;
+            background: linear-gradient(to right, #38bdf8, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
             margin-bottom: 1rem;
-            color: #2c3e50;
+            line-height: 1.1;
         }
 
-        h2 {
-            font-size: 1.5rem;
-            font-weight: normal;
-            color: #555;
+        .subtitle {
+            font-size: clamp(1.2rem, 3vw, 1.8rem);
+            font-weight: 300;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            max-width: 800px;
+            margin-inline: auto;
+        }
+
+        .authors {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
             margin-bottom: 2rem;
         }
 
-        .badge {
-            display: inline-block;
-            padding: 0.8rem 1.5rem;
-            background: #ffc107;
-            color: #000;
+        .author-badge {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.5rem 1.2rem;
+            border-radius: 999px;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.3s;
+        }
+
+        .author-badge:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Glassmorphism Cards */
+        .glass-card {
+            background: var(--surface-color);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--border-radius);
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .glass-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #38bdf8;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            color: #e2e8f0;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-muted);
+        }
+
+        ul {
+            margin-left: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: var(--text-muted);
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+
+        li strong {
+            color: #f8fafc;
+        }
+
+        /* Image styling */
+        .image-wrapper {
+            margin: 2rem 0;
+            text-align: center;
+        }
+
+        .image-wrapper img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .image-caption {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-top: 0.8rem;
+            font-style: italic;
+        }
+
+        /* Table styling for Results */
+        .table-responsive {
+            overflow-x: auto;
+            margin: 1.5rem 0;
             border-radius: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        th,
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            white-space: nowrap;
+        }
+
+        th {
+            background: rgba(255, 255, 255, 0.05);
+            font-weight: 600;
+            color: #f8fafc;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .highlight-cell {
             font-weight: bold;
+            color: var(--primary);
+        }
+
+        /* Layout Grid for larger screens */
+        @media (min-width: 992px) {
+            .grid-2 {
+                display: grid;
+                grid-template-columns: 1.3fr 1fr;
+                gap: 2rem;
+                align-items: stretch;
+            }
+            .col {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+            }
+            .col .glass-card:last-child {
+                flex-grow: 1;
+                margin-bottom: 0;
+            }
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #38bdf8, #818cf8);
+            color: #fff;
+            font-size: 1.2rem;
+            font-weight: 700;
+            padding: 1rem 2.5rem;
+            border-radius: 50px;
+            text-decoration: none;
+            box-shadow: 0 10px 20px rgba(129, 140, 248, 0.3);
+            transition: transform 0.3s, box-shadow 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 15px 30px rgba(129, 140, 248, 0.5);
+            color: #fff;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 2rem 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 2rem;
+            color: var(--text-muted);
+        }
+
+        .logos {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 2rem;
+            margin-top: 0;
+            flex-wrap: wrap;
+        }
+
+        .logos img {
+            max-height: 90px;
+            background: #ffffff;
+            padding: 8px;
+            border-radius: 12px;
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-up {
+            animation: fadeInUp 0.8s ease-out forwards;
         }
     </style>
 </head>
+
 <body>
+
     <div class="container">
-        <h1>Spectochem</h1>
-        <h2>Model for Predicting Photocatalysts</h2>
-        <div class="badge">🚧 Work in Progress 🚧</div>
+
+        <!-- Header -->
+        <header>
+            <h1>SpectoChem</h1>
+            <div class="subtitle">Model do wykrywania fotokatalizatorów chemicznych</div>
+            <div class="authors">
+                <span class="author-badge">Nikodem Świerkowski</span>
+                <span class="author-badge">Radosław Woźniak</span>
+                <span class="author-badge">Katsiaryna Viarenich</span>
+                <span class="author-badge">Tymoteusz Zapała</span>
+            </div>
+        </header>
+
+        <main>
+            <div class="grid-2">
+                <div class="col">
+                    <section class="glass-card animate-up" style="animation-delay: 0.1s;">
+                        <h2>Problem</h2>
+                        <p>Wykrywanie fotokatalizatorów chemicznych jest jednym z kluczowych zagadnień chemii
+                            materiałowej ze względu na ich szerokie zastosowanie w takich dziedzinach jak energetyka czy
+                            ochrona środowiska. Obecne metody identyfikacji nowych fotokatalizatorów opierają się na
+                            wielogodzinnych badaniach.</p>
+                        <p>W odpowiedzi na te wyzwania prezentujemy <strong>SpectoChem</strong> — system umożliwiający
+                            wykrywanie cząsteczek o właściwościach fotokatalitycznych na podstawie podstawowych cech
+                            geometrycznych ich struktury.</p>
+
+                        <div class="image-wrapper">
+                            <img src="img/teser.png" alt="Wizualizacja struktury cząsteczki">
+                            <div class="image-caption">SpectChem: Model do wykrywania fotokatalizatorów chemicznych.
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="glass-card animate-up" style="animation-delay: 0.2s;">
+                        <h2>Dwa Poziomy Predykcji</h2>
+                        <p>Projekt SpectoChem zawiera modele, które pozwalają przewidywać w dwóch opcjach:</p>
+                        <ul>
+                            <li><strong>Klasyfikacja binarna</strong> – Model zwraca binarną informację czy przekazana
+                                cząsteczka jest potencjalnym fotokatalizatorem, czy nie.</li>
+                            <li><strong>Regresja</strong> – Model zwraca szczegółowe wartości długości fali oraz energii
+                                dla pierwszych dziesięciu stanów aktywnych cząsteczki, co pozwala na wyliczenie całego
+                                spektrum cząsteczki.</li>
+                        </ul>
+
+                        <div class="image-wrapper">
+                            <img src="img/2-solutions.png" alt="Opcje predykcji">
+                            <div class="image-caption">Wizualizacja interpretacji outputu binarnego (góra) oraz
+                                regresyjnego (dół).</div>
+                        </div>
+                    </section>
+
+                    <section class="glass-card animate-up" style="animation-delay: 0.3s;">
+                        <h2>Architektura Rozwiązania</h2>
+                        <p>Nasze rozwiązanie składa się z trzech głównych komponentów:</p>
+                        <ul>
+                            <li><strong>Grafowa reprezentacja cząsteczki</strong> – Przekształcenie cząsteczki w graf na
+                                podstawie jej struktury geometrycznej, wzbogacony o informacje o liczbach atomowych.
+                            </li>
+                            <li><strong>Grafowa sieć neuronowa</strong> – Wykorzystanie architektury grafowych sieci
+                                neuronowych (GNN) do wyznaczenia reprezentacji na poziomie atomów.</li>
+                            <li><strong>Predykcja właściwości</strong> – Agregacja reprezentacji atomowych do poziomu
+                                cząsteczki, a następnie wykorzystanie głowicy predykcyjnej do przewidywania jej
+                                właściwości.</li>
+                        </ul>
+
+                        <div class="image-wrapper">
+                            <img src="img/architektura2.png" alt="Schemat architektury">
+                            <div class="image-caption">Schemat architektury rozwiązania.</div>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="col">
+                    <section class="glass-card animate-up" style="animation-delay: 0.4s;">
+                        <h2>Eksperymenty i Dane</h2>
+                        <p>Eksperymenty przeprowadzono na zbiorze <strong>tmQMg*</strong>, zawierającym informacje o
+                            stanach energetycznych dla ponad 74 tysięcy cząsteczek kompleksów metali przejściowych.
+                            Zbiór ten został wygenerowany z wykorzystaniem metod chemii kwantowej i stanowi jedno z
+                            największych publicznie dostępnych źródeł danych dla tego typu związków.</p>
+
+                        <div class="image-wrapper">
+                            <img src="img/rozklady.png" alt="Rozkłady danych">
+                            <div class="image-caption">Rozkłady długości fali (lewo) i siły oscylatora (prawo) dla
+                                zbioru tmQMg*.</div>
+                        </div>
+                    </section>
+
+                    <section class="glass-card animate-up" style="animation-delay: 0.5s;">
+                        <h2>Wyniki</h2>
+                        <p>Spośród wszystkich analizowanych architektur najwyższą skuteczność osiągnął model
+                            wykorzystujący <em>SchNet</em> jako grafową sieć neuronową. Wynik ten potwierdza efektywność
+                            architektur uwzględniających informacje geometryczne o strukturze cząsteczki.</p>
+
+                        <h3>Klasyfikacja Binarna (F1 score &uparrow;)</h3>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Model</th>
+                                        <th>Train & Test: Block 3</th>
+                                        <th>Test Only: Block 3</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>SchNet</td>
+                                        <td class="highlight-cell">0.783 &plusmn; 0.013</td>
+                                        <td class="highlight-cell">0.657 &plusmn; 0.010</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GCN</td>
+                                        <td>0.660 &plusmn; 0.019</td>
+                                        <td>0.521 &plusmn; 0.063</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GAT</td>
+                                        <td>0.669 &plusmn; 0.013</td>
+                                        <td>0.521 &plusmn; 0.008</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GINE</td>
+                                        <td>0.441 &plusmn; 0.363</td>
+                                        <td>0.576 &plusmn; 0.033</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <h3>Regresja (Metryki spektralne &downarrow;)</h3>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Model</th>
+                                        <th colspan="2">Train & Test: Block 3</th>
+                                        <th colspan="2">Test Only: Block 3</th>
+                                    </tr>
+                                    <tr>
+                                        <th></th>
+                                        <th>JSD</th>
+                                        <th>SMSE (10<sup>-7</sup>)</th>
+                                        <th>JSD</th>
+                                        <th>SMSE (10<sup>-7</sup>)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>SchNet</td>
+                                        <td class="highlight-cell">0.087 &plusmn; 0.002</td>
+                                        <td class="highlight-cell">1.301 &plusmn; 0.024</td>
+                                        <td class="highlight-cell">0.221 &plusmn; 0.006</td>
+                                        <td class="highlight-cell">2.700 &plusmn; 0.060</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GCN</td>
+                                        <td>0.145 &plusmn; 0.005</td>
+                                        <td>1.934 &plusmn; 0.058</td>
+                                        <td>0.240 &plusmn; 0.014</td>
+                                        <td>3.118 &plusmn; 0.194</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GAT</td>
+                                        <td>0.143 &plusmn; 0.004</td>
+                                        <td>1.897 &plusmn; 0.046</td>
+                                        <td>0.269 &plusmn; 0.037</td>
+                                        <td>3.307 &plusmn; 0.285</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GINE</td>
+                                        <td>0.158 &plusmn; 0.002</td>
+                                        <td>2.068 &plusmn; 0.041</td>
+                                        <td>0.247 &plusmn; 0.003</td>
+                                        <td>3.011 &plusmn; 0.049</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="glass-card animate-up" style="animation-delay: 0.6s;">
+                        <h2>Efekty projektu</h2>
+                        <ul>
+                            <li><strong>Przygotowanie publikacji</strong> – <em>Learning Light: Predicting UV-Vis
+                                    Spectra of Transition Metal Complexes with Machine Learning</em> w celu zgłoszenia
+                                do czasopisma <em>Journal of Chemical Theory and Computation</em>.</li>
+                            <li><strong>Aplikacja</strong> – umożliwiająca wizualizację przewidywanych widm
+                                absorpcyjnych.</li>
+                            <li><strong>Wagi modelu</strong> – udostępnione na platformie Hugging Face.</li>
+                            <li><strong>Repozytorium</strong> – zawierające kod źródłowy projektu.</li>
+                        </ul>
+
+                    </section>
+                </div>
+            </div>
+
+            <!-- Full Width Sections -->
+            <section class="glass-card animate-up" style="animation-delay: 0.7s; " id="publication-app">
+                <h2>Interaktywna Aplikacja</h2>
+                <p>Wypróbuj naszą aplikację stworzoną do wizualizacji i analizy właściwości cząsteczek
+                    fotokatalitycznych.</p>
+                <div style="text-align: center; margin-top: 3rem; margin-bottom: 2rem;">
+                    <a href="https://rwozn.github.io/spectochem_app/" target="_blank" rel="noopener noreferrer" class="cta-button">
+                        Try it now!
+                    </a>
+                </div>
+            </section>
+
+            <section class="glass-card animate-up" style="animation-delay: 0.8s;">
+                <h2>Podsumowanie</h2>
+                <p>Przeprowadzone eksperymenty pokazują, że zaproponowana metoda skutecznie przewiduje właściwości
+                    fotokatalityczne cząsteczek i stanowi obiecujące narzędzie wspomagające odkrywanie nowych
+                    materiałów, wymagające jednak dalszej walidacji przed praktycznym wdrożeniem.</p>
+            </section>
+
+        </main>
+
+        <footer>
+            <div class="logos">
+                <img src="img/logo_spectochem.png" alt="SpectoChem Logo">
+                <img src="img/logos_combined.png" alt="Instytucje">
+            </div>
+            <p style="margin-top: 2rem; font-size: 0.9rem;">&copy; 2024 SpectoChem Team. Wszelkie prawa zastrzeżone.</p>
+        </footer>
+
     </div>
+
+    <!-- Scroll Animations Observer -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.animationPlayState = 'running';
+                    }
+                });
+            }, { threshold: 0.1 });
+
+            document.querySelectorAll('.animate-up').forEach((el) => {
+                el.style.animationPlayState = 'paused';
+                observer.observe(el);
+            });
+        });
+    </script>
 </body>
+
 </html>
