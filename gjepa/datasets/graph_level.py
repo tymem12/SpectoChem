@@ -281,6 +281,10 @@ class GraphLevelDataModule(GraphDataModule):
                                 standarize_lambda=self.config.additional_loading_params['standarize_lambda'],
                                 standarize_f=self.config.additional_loading_params['standarize_f'])
         
+        if hasattr(self, "_y_mean"):
+            print("Standardization Means:\n", self._y_mean)
+            print("Standardization Stds:\n",  self._y_std)
+
         full_ds_len = sum(map(len, (
             self.train_ds, self.val_ds, self.test_ds
         )))
