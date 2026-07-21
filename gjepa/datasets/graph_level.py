@@ -342,49 +342,40 @@ class GraphLevelDataModule(GraphDataModule):
             if not standarize_lambda and not standarize_f:
                 return  # no-op if both are False
 
-            lambda_vals = []
-            f_vals = []
-
-            # 1. Gather stats ONLY from the train_ds to prevent data leakage
-            for data_element in self.train_ds:
-                y = data_element.y.view(-1)
-                num_states = y.size(0) // 2  # First half is lambda, second half is f
+            # 1. Gather all y vectors from train_ds into a matrix
+            train_y_list = [data.y.view(-1) for data in self.train_ds]
+            train_y_tensor = torch.stack(train_y_list, dim=0)  # Shape: (N, 20)
+            
+            num_states = train_y_tensor.size(1) // 2
+            
+            # 2. Calculate means and stds per channel (column-wise)
+            means = train_y_tensor.mean(dim=0)
+            stds = train_y_tensor.std(dim=0, unbiased=False)
+            
+            # If a modality shouldn't be standardized, revert its stats to mean=0, std=1
+            if not standarize_lambda:
+                means[:num_states] = 0.0
+                stds[:num_states] = 1.0
+            if not standarize_f:
+                means[num_states:] = 0.0
+                stds[num_states:] = 1.0
                 
-                if standarize_lambda:
-                    lambda_vals.extend(y[:num_states].tolist())
-                if standarize_f:
-                    f_vals.extend(y[num_states:].tolist())
+            self._y_mean = means
+            self._y_std = stds + 1e-8  # Add epsilon to prevent division by zero
 
-            lambda_mean = lambda_std = None
-            f_mean = f_std = None
-
-            # 2. Compute Mean/Std and register with singletons
+            # 3. Register with singletons (passing the 1D tensors now, not scalars)
             if standarize_lambda:
-                if len(lambda_vals) == 0:
-                    raise RuntimeError("No lambda values found in train set.")
-                lambda_tensor = torch.tensor(lambda_vals, dtype=torch.float32)
-                lambda_mean = lambda_tensor.mean()
-                lambda_std  = lambda_tensor.std(unbiased=False)
-                StandarizerSingletonLambda.set_values(mean_lambda=lambda_mean, std_lambda=lambda_std)
-
+                StandarizerSingletonLambda.set_values(
+                    mean_lambda=self._y_mean[:num_states].clone(), 
+                    std_lambda=self._y_std[:num_states].clone()
+                )
             if standarize_f:
-                if len(f_vals) == 0:
-                    raise RuntimeError("No f values found in train set.")
-                f_tensor = torch.tensor(f_vals, dtype=torch.float32)
-                f_mean = f_tensor.mean()
-                f_std  = f_tensor.std(unbiased=False)
-                StandarizerSingletonF.set_values(mean_f=f_mean, std_f=f_std)
+                StandarizerSingletonF.set_values(
+                    mean_f=self._y_mean[num_states:].clone(), 
+                    std_f=self._y_std[num_states:].clone()
+                )
 
-            self._y_mean = torch.tensor([
-                lambda_mean if lambda_mean is not None else 0.0,
-                f_mean if f_mean is not None else 0.0
-            ])
-            self._y_std = torch.tensor([
-                lambda_std if lambda_std is not None else 1.0,
-                f_std if f_std is not None else 1.0
-            ])
-
-            # 3. Apply the train-derived statistics to all subsets
+            # 4. Apply standardizer via vectorization
             def _standardize_dataset(ds):
                 if ds is None:
                     return None
@@ -392,13 +383,10 @@ class GraphLevelDataModule(GraphDataModule):
                 for i in range(len(ds)):
                     data = ds[i].clone()
                     y = data.y.view(-1).clone()
-                    num_states = y.size(0) // 2
                     
-                    if standarize_lambda:
-                        y[:num_states] = (y[:num_states] - lambda_mean) / (lambda_std + 1e-8)
-                    if standarize_f:
-                        y[num_states:] = (y[num_states:] - f_mean) / (f_std + 1e-8)
-                        
+                    # Apply standardization to all 20 channels at once
+                    y = (y - self._y_mean) / self._y_std
+                    
                     data.y = y.view_as(data.y)
                     standardized.append(data)
                 return standardized

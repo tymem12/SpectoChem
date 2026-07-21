@@ -105,16 +105,6 @@ class SupervisedGraphLevelGNN(LightningModule):
         )
         self.log("test_loss", loss, batch_size=batch.batch_size, prog_bar=False)
 
-        standarized_lambda_val = StandarizerSingletonLambda.get_values()
-        standarized_f_val = StandarizerSingletonF.get_values()
-        if standarized_lambda_val['standarize']:
-            self.log('lambda_mean',standarized_lambda_val['mean_lambda'])
-            self.log('lambda_std',standarized_lambda_val['std_lambda'])
-        if standarized_f_val['standarize']:
-            self.log('f_mean',standarized_f_val['mean_f'])
-            self.log('f_std',standarized_f_val['std_f'])
-
-
         return loss
 
     def predict_step(
@@ -168,9 +158,31 @@ class SupervisedGraphLevelGNN(LightningModule):
         N, D = y_all.shape
         assert len(all_ids) == N, f'N: {N}, len(all_ids): {len(all_ids)}'
 
-        data = {"origin_id": np.array(all_ids)}
         y_np = y_all.numpy()
         y_pred_np = y_pred_all.numpy()
+
+        # --- UN-STANDARDIZATION LOGIC ---
+        standarized_lambda_val = StandarizerSingletonLambda.get_values()
+        standarized_f_val = StandarizerSingletonF.get_values()
+
+        if output_params['prediction_type'] == 'multi_regressor':
+            num_states = D // 2
+            
+            # Un-standardize Lambdas (first half) using vector broadcasting
+            if standarized_lambda_val['standarize']:
+                l_mean = standarized_lambda_val['mean_lambda'].numpy()
+                l_std = standarized_lambda_val['std_lambda'].numpy()
+                y_np[:, :num_states] = (y_np[:, :num_states] * l_std) + l_mean
+                y_pred_np[:, :num_states] = (y_pred_np[:, :num_states] * l_std) + l_mean
+
+            # Un-standardize fs (second half) using vector broadcasting
+            if standarized_f_val['standarize']:
+                f_mean = standarized_f_val['mean_f'].numpy()
+                f_std = standarized_f_val['std_f'].numpy()
+                y_np[:, num_states:] = (y_np[:, num_states:] * f_std) + f_mean
+                y_pred_np[:, num_states:] = (y_pred_np[:, num_states:] * f_std) + f_mean
+
+        data = {"origin_id": np.array(all_ids)}
 
         for i in range(D):
             data[f"target_{i}"] = y_np[:, i]
@@ -184,31 +196,27 @@ class SupervisedGraphLevelGNN(LightningModule):
             else self.trainer.default_root_dir
         )
         os.makedirs(save_dir, exist_ok=True)
+        
         csv_path = os.path.join(save_dir, "test_predictions_wide.csv")
         df.to_csv(csv_path, index=False)
-
-        plot_graph_with_predictions(df, output_params['prediction_type'],save_dir, tuple(output_params['vis_range']))
+        
+        plot_graph_with_predictions(df, output_params['prediction_type'], save_dir, tuple(output_params['vis_range']))
         print(f"[SupervisedGraphLevelGNN] saved predictions to: {csv_path}")
         
-        csv_path = os.path.join(save_dir, "mean_and_std_val.csv")
-
-        standarized_lambda_val = StandarizerSingletonLambda.get_values()
-        standarized_f_val = StandarizerSingletonF.get_values()
-
-        data = {}
+        csv_path_stats = os.path.join(save_dir, "mean_and_std_val.csv")
+        data_stats = {}
 
         if standarized_lambda_val['standarize']:
-            data['lambda_mean'] = standarized_lambda_val['mean_lambda'].item()
-            data['lambda_std'] = standarized_lambda_val['std_lambda'].item()
+            data_stats['lambda_mean'] = standarized_lambda_val['mean_lambda'].tolist()
+            data_stats['lambda_std'] = standarized_lambda_val['std_lambda'].tolist()
 
         if standarized_f_val['standarize']:
-            data['f_mean'] = standarized_f_val['mean_f'].item()
-            data['f_std'] = standarized_f_val['std_f'].item()
+            data_stats['f_mean'] = standarized_f_val['mean_f'].tolist()
+            data_stats['f_std'] = standarized_f_val['std_f'].tolist()
 
-        if data:
-            df = pd.DataFrame([data])  # single row
-            df.to_csv(csv_path, index=False)
-        
+        if data_stats:
+            df_stats = pd.DataFrame([data_stats])  # single row
+            df_stats.to_csv(csv_path_stats, index=False)        
 
 
     def _get_pooled_z(self, batch: Data) -> Tensor:
