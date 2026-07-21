@@ -275,13 +275,14 @@ class GraphLevelDataModule(GraphDataModule):
 
             print(f"Unique isomers: train: {len(train_isomers)} | val: {len(val_isomers)} | test: {len(test_isomers)}")
 
-        print(self.test_ds[0].y)
+        print("Test ds first entry:", self.test_ds[0].y)
 
         self._standarize_output(output_type=self.config.additional_loading_params['prediction_type'],
                                 standarize_lambda=self.config.additional_loading_params['standarize_lambda'],
                                 standarize_f=self.config.additional_loading_params['standarize_f'])
         
         if hasattr(self, "_y_mean"):
+            print("Test ds first entry (after standardization):", self.test_ds[0].y)
             print("Standardization Means:\n", self._y_mean)
             print("Standardization Stds:\n",  self._y_std)
 
