@@ -338,6 +338,11 @@ class GraphLevelDataModule(GraphDataModule):
         if self.train_ds is None:
             raise RuntimeError("train_ds is not initialized. Call setup() before _standarize_output().")
 
+        if output_type == "multi_regressor":
+            if standarize_f or standarize_lambda:
+                raise ValueError("Standardization is disabled for 'multi_regressor'")
+            return
+
         if output_type == "pairs":
             if not standarize_lambda and not standarize_f:
                 return  # no-op if both False
