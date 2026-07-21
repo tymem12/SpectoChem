@@ -339,8 +339,74 @@ class GraphLevelDataModule(GraphDataModule):
             raise RuntimeError("train_ds is not initialized. Call setup() before _standarize_output().")
 
         if output_type == "multi_regressor":
-            if standarize_f or standarize_lambda:
-                raise ValueError("Standardization is disabled for 'multi_regressor'")
+            if not standarize_lambda and not standarize_f:
+                return  # no-op if both are False
+
+            lambda_vals = []
+            f_vals = []
+
+            # 1. Gather stats ONLY from the train_ds to prevent data leakage
+            for data_element in self.train_ds:
+                y = data_element.y.view(-1)
+                num_states = y.size(0) // 2  # First half is lambda, second half is f
+                
+                if standarize_lambda:
+                    lambda_vals.extend(y[:num_states].tolist())
+                if standarize_f:
+                    f_vals.extend(y[num_states:].tolist())
+
+            lambda_mean = lambda_std = None
+            f_mean = f_std = None
+
+            # 2. Compute Mean/Std and register with singletons
+            if standarize_lambda:
+                if len(lambda_vals) == 0:
+                    raise RuntimeError("No lambda values found in train set.")
+                lambda_tensor = torch.tensor(lambda_vals, dtype=torch.float32)
+                lambda_mean = lambda_tensor.mean()
+                lambda_std  = lambda_tensor.std(unbiased=False)
+                StandarizerSingletonLambda.set_values(mean_lambda=lambda_mean, std_lambda=lambda_std)
+
+            if standarize_f:
+                if len(f_vals) == 0:
+                    raise RuntimeError("No f values found in train set.")
+                f_tensor = torch.tensor(f_vals, dtype=torch.float32)
+                f_mean = f_tensor.mean()
+                f_std  = f_tensor.std(unbiased=False)
+                StandarizerSingletonF.set_values(mean_f=f_mean, std_f=f_std)
+
+            self._y_mean = torch.tensor([
+                lambda_mean if lambda_mean is not None else 0.0,
+                f_mean if f_mean is not None else 0.0
+            ])
+            self._y_std = torch.tensor([
+                lambda_std if lambda_std is not None else 1.0,
+                f_std if f_std is not None else 1.0
+            ])
+
+            # 3. Apply the train-derived statistics to all subsets
+            def _standardize_dataset(ds):
+                if ds is None:
+                    return None
+                standardized = []
+                for i in range(len(ds)):
+                    data = ds[i].clone()
+                    y = data.y.view(-1).clone()
+                    num_states = y.size(0) // 2
+                    
+                    if standarize_lambda:
+                        y[:num_states] = (y[:num_states] - lambda_mean) / (lambda_std + 1e-8)
+                    if standarize_f:
+                        y[num_states:] = (y[num_states:] - f_mean) / (f_std + 1e-8)
+                        
+                    data.y = y.view_as(data.y)
+                    standardized.append(data)
+                return standardized
+
+            self.train_ds = _standardize_dataset(self.train_ds)
+            self.val_ds   = _standardize_dataset(self.val_ds)
+            self.test_ds  = _standardize_dataset(self.test_ds)
+            
             return
 
         if output_type == "pairs":
