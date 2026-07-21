@@ -165,6 +165,48 @@ def run_f_regression(model_name, seed, standarization, f_as_log10: bool, block_3
         
         run_cmd(cmd, f"{model_name} | {exp_type_log} | num_pair={num_pair}")
 
+def run_multi_regression(model_name, seed, standarization, normalize_eV, f_as_log10, block_3_split):
+    exp_type_log = f"MULTI_REGRESSION"
+    block_3_only = block_3_split == "none"
+    block_3_split = block_3_split if block_3_split != "none" else 'null'
+
+    min_f_value = -1
+    f_outlier_threshold = 'null'
+    sort_by_max_f = False
+
+    # No num_pair loop — predicting all 20 elements at once
+    experiment_path = f"supervised/{seed}/multi_regressor/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}_f-as-log10-{f_as_log10}/block_3_{block_3_split}/results"
+
+    metrics_path = Path("data", "experiments", experiment_path, "lightning_logs", f"version_{seed}", "metrics.json")
+    if metrics_path.exists():
+        print(f"Skipping existing: {experiment_path}")
+        return
+
+    cmd = [
+        "python", "experiments/scripts/train_graph_level.py",
+        "+exp=TMQM_SPECTO_MULTI_REGRESSOR", # <--- Assuming this is the name of your new config file
+        "model=supervised_graph_level",
+        f"backbone@model.backbone={model_name}",
+        f"training.experiment_name={experiment_path}",
+        f"training.random_seed={seed}",
+        f"dataset.block_3_split_mode={block_3_split}",
+        f"dataset.additional_loading_params.num_states=10", # <--- Gets 10 states (which yields 20 values)
+        f"dataset.additional_loading_params.min_f_value={min_f_value}",
+        f"dataset.additional_loading_params.filter_f_value={min_f_value}",
+        f"dataset.additional_loading_params.sort_by_max_f={sort_by_max_f}",
+        f"dataset.additional_loading_params.outlier_strategy={OUTLIER_STRATEGY}",
+        f"dataset.additional_loading_params.standarize_lambda={standarization}",
+        f"dataset.additional_loading_params.standarize_f={standarization}",
+        f"dataset.additional_loading_params.lambda_outlier_threshold={LAMBDA_OUTLIER_THRESHOLD}",
+        f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
+        f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
+        f"dataset.additional_loading_params.f_as_log10={f_as_log10}",
+        f"dataset.additional_loading_params.block_3_only={block_3_only}",
+        "dataset.additional_loading_params.filter_type=all_samples"
+    ]
+    
+    run_cmd(cmd, f"{model_name} | {exp_type_log}")
+
 # --- MAIN EXECUTION LOOP ---
 def main():
     parser = argparse.ArgumentParser(description="Run specific experiments with specific models.")
@@ -227,6 +269,9 @@ def main():
     elif exp_to_run == 'f_regression':
         run_f_regression(model_name, seed,
                 standarization, f_as_log10, block_3_split)
+    elif exp_to_run == 'multi_regression':
+        run_multi_regression(model_name, seed, 
+                standarization, normalize_eV, f_as_log10, block_3_split)
     else:
         print(f"Error: Unknown experiment '{exp_to_run}'.")
         sys.exit(1)

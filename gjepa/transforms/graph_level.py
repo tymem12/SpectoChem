@@ -21,7 +21,7 @@ class SelectTargets(BaseTransform):
 
 
 class AddEdgesAndDistances(object):
-    def __init__(self, cutoff=5.0):
+    def __init__(self, cutoff=10.0):
         self.cutoff = cutoff
     
     def __call__(self, data):

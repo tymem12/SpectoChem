@@ -71,7 +71,7 @@ class TMQMGStarDataset(InMemoryDataset):
 
         if self.prediction_type not in {"pairs", "vector", 'only_lambdas', 'binary_classification',
                                         'binary_vector_multiclass', 'binary_vector_multilabel',
-                                        'lambda_regressor', 'f_regressor'}:
+                                        'lambda_regressor', 'f_regressor', 'multi_regressor'}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
         
@@ -301,6 +301,16 @@ class TMQMGStarDataset(InMemoryDataset):
         vec.append(f)
         return torch.tensor([vec], dtype=torch.float32)
 
+    def _build_multi_regressor(self, transitions: List[Tuple[float, float]], num_states: int = 10) -> torch.Tensor:
+        lams = []
+        fs = []
+        for i in range(num_states):
+            lam, f = transitions[i]
+            lams.append(lam)
+            fs.append(f)
+        # Returns [1, 20] tensor: first 10 are lambdas, next 10 are f's
+        return torch.tensor([lams + fs], dtype=torch.float32)
+
     def _build_binary(self, transitions: List[Tuple[float, float]], min_f_value: float = 0) -> torch.Tensor:
         pos = 0
         for lam, f in transitions:
@@ -353,9 +363,9 @@ class TMQMGStarDataset(InMemoryDataset):
         return hist.unsqueeze(0)
     
     def _prepare_the_output_format(self, transitions):
-        if not self.prediction_type in {"pairs", "vector", "only_lambdas", "binary_classification",
+        if self.prediction_type not in {"pairs", "vector", 'only_lambdas', 'binary_classification',
                                         'binary_vector_multiclass', 'binary_vector_multilabel',
-                                        'lambda_regressor', 'f_regressor'}:
+                                        'lambda_regressor', 'f_regressor', 'multi_regressor'}: # <-- added here
             raise ValueError('prediction type did not mach: ', " pairs ", " vector ",
                              "only_lambdas", " binary_classification",
                              'lambda_regressor', 'f_regressor')
@@ -380,7 +390,8 @@ class TMQMGStarDataset(InMemoryDataset):
             return self._build_lambda_regressor(transitions, num_pairs=self.num_states)
         elif self.prediction_type == 'f_regressor':
             return self._build_f_regressor(transitions, num_pairs=self.num_states)
-
+        elif self.prediction_type == 'multi_regressor':               # <--- NEW
+            return self._build_multi_regressor(transitions, self.num_states) # <--- NEW
     def remove_outliers(self, transitions):
         if not transitions:
             return []
@@ -407,7 +418,7 @@ class TMQMGStarDataset(InMemoryDataset):
         if not transitions:
             return []
         if self.convert_to_ev and self.prediction_type in {"pairs", 'only_lambdas',
-                                                           'lambda_regressor'}:
+                                                           'lambda_regressor', 'multi_regressor'}:
             ev_trainsitions = [(1239.8419843320026224 / lam, f) for lam, f in transitions]
             return ev_trainsitions
         return transitions
@@ -415,7 +426,7 @@ class TMQMGStarDataset(InMemoryDataset):
     def convert_f_to_log10(self, transitions):
         if not transitions:
             return []
-        if self.f_as_log10 and self.prediction_type in {"pairs", 'f_regressor'}:
+        if self.f_as_log10 and self.prediction_type in {"pairs", 'f_regressor', 'multi_regressor'}: # <-- added here
             def _f_to_log10(f: float):
                 # we could use 1e-8 but then the log10 f distribution has a spike at x=-8 and is completely flat (no data)
                 # for -8 < x < -4; so setting the threshold at 1e-5 we'll get tighter distribution with no gaps
