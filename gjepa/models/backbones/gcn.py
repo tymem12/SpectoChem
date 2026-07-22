@@ -3,6 +3,8 @@ from torch_geometric.data import Data
 from torch_geometric.nn.models import GCN
 from torch_geometric.nn.models.schnet import GaussianSmearing
 
+import torch.nn.functional as F
+
 class GCNEncoder(nn.Module):
     handles_pos_encoding = False
 
@@ -35,6 +37,7 @@ class GCNEncoder(nn.Module):
         edge_attr = self.distance_expansion(batch.edge_weight)
         
         learned_edge_weight = self.rbf_proj(edge_attr).squeeze(-1)
-        
+        learned_edge_weight = F.softplus(learned_edge_weight)
+
         h = self.gnn(x, batch.edge_index, edge_weight=learned_edge_weight)
         return h
