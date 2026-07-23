@@ -1,4 +1,6 @@
 dvc
+scipy<1.15          # >=1.15 removed scipy.special.sph_harm used in transforms/pos_enc.py
+rich                # required at runtime by pytorch-lightning progress bars
 scikit-learn==1.7.0
 pydantic==2.11.7
 pytorch-lightning==2.5.2

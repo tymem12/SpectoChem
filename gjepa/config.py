@@ -45,7 +45,22 @@ class GraphLevelDatasetConfig(GraphDatasetConfig):
     split_ratios: tuple[float, float] | None
     additional_loading_params: dict[str, Any] | None = None
     target_standarization: bool | None = None
-    block_3_split_mode: Optional[Literal["train", "test"]] = None
+    block_3_split_mode: Optional[Literal["train", "test", "train_holdout"]] = None
+    # Data-ablation controls (fixed held-out block-3 test across training regimes).
+    # `holdout_test_keys_file`: JSON list of isomer keys defining the frozen test set
+    #   (used with block_3_split_mode="train_holdout"; train pool = everything else).
+    # `max_train_graphs`: cap the training set to N graphs (the "mini" regime that
+    #   matches the block-3-only data budget); None = no cap.
+    # `dump_test_keys_file`: if set, write the isomer keys of the test split to this
+    #   path after setup() (used once on the block-3 baseline to create the holdout).
+    holdout_test_keys_file: Optional[str] = None
+    max_train_graphs: Optional[int] = None
+    dump_test_keys_file: Optional[str] = None
+    # When True with block_3_split_mode="train_holdout", restrict the TRAIN pool to
+    # block-3 graphs only (still testing on the frozen holdout). This gives the
+    # 3d->3d baseline that shares the exact same test set T as the 345 regimes,
+    # independent of the training seed.
+    holdout_train_block_3_only: bool = False
     group_by_isomers: bool = False
     predictor_kwargs: Optional[dict[str, Any]] = None
 

@@ -13,13 +13,17 @@ predictor_kwargs:
   dropout: null
 split_ratios: [0.8, 0.1]
 block_3_split_mode: null
+holdout_test_keys_file: null
+max_train_graphs: null
+dump_test_keys_file: null
+holdout_train_block_3_only: false
 group_by_isomers: true
 metric_mode: min
 main_metric: MAE
 additional_loading_params: 
   prediction_type: lambda_regressor
   num_states: 0 #0-9
-  vis_range: [350, 650]
+  vis_range: [330, 650]
   block_3_only: True
   filter_type: all_samples
   filter_f_value: -1
@@ -28,9 +32,8 @@ additional_loading_params:
   standarize_lambda: true  #true false
   standarize_f: false
   load_representations: ''
-  outlier_strategy: whole-compound-outlier-removal  #null, whole-compound-outlier-removal
+  outlier_strategy: remove_outlying_transitions  #null, remove_outlying_transitions
   convert_to_ev: true  #true false
-  f_as_log10: false
-  f_outlier_threshold: null # 0.5 null
-  lambda_outlier_threshold: 1327.9505300000078  #null 1500
+  f_outlier_threshold: 0.5 # 0.5 null
+  lambda_outlier_threshold: 1500  #null 1500
   
