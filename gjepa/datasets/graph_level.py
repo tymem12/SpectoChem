@@ -2,9 +2,9 @@ from pathlib import Path
 from tqdm import tqdm
 from torch.utils.data import random_split, Subset
 import os
+import json
 from typing import Optional, Any
 from collections.abc import Sequence
-from sklearn.model_selection import train_test_split
 
 import random
 
@@ -89,7 +89,6 @@ class GraphLevelDataModule(GraphDataModule):
         should_split = name != ZINC.__name__
 
         block_3_split_mode = self.config.block_3_split_mode
-        is_binary_task = self.config.task_type == "binary"
 
         if should_split:
             if split_ratios is None:
@@ -143,37 +142,11 @@ class GraphLevelDataModule(GraphDataModule):
         def _get_isomer_key(d):
             return str(sorted(d.z.tolist()))
 
-        def _get_binary_label(d):
-            # Extracts scalar label, assumes class 1 is the positive representation
-            return int(d.y.view(-1)[0].item())
-
-        def _isomer_group_split(ds, train_size, stratify=False):
+        def _isomer_group_split(ds, train_size):
             groups = list(map(_get_isomer_key, ds))
-            
-            if stratify:
-                labels = list(map(_get_binary_label, ds))
-                # Aggregate labels to the group level. If any isomer has class 1, the group gets class 1
-                group_to_label = {}
-                for g, l in zip(groups, labels):
-                    group_to_label[g] = max(group_to_label.get(g, 0), l)
-                
-                unique_groups = list(group_to_label.keys())
-                group_labels = [group_to_label[g] for g in unique_groups]
-                
-                # Stratify at the group level to prevent data leakage between splits
-                train_groups, test_groups = train_test_split(
-                    unique_groups, train_size=train_size, stratify=group_labels, random_state=self.random_seed
-                )
-                
-                train_g_set = set(train_groups)
-                idx1 = [i for i, g in enumerate(groups) if g in train_g_set]
-                idx2 = [i for i, g in enumerate(groups) if g not in train_g_set]
-                
-                return Subset(ds, idx1), Subset(ds, idx2)
-            else:
-                gss = GroupShuffleSplit(n_splits=1, train_size=train_size, random_state=self.random_seed)
-                idx1, idx2 = next(gss.split(range(len(ds)), groups=groups))
-                return Subset(ds, idx1), Subset(ds, idx2)
+            gss = GroupShuffleSplit(n_splits=1, train_size=train_size, random_state=self.random_seed)
+            idx1, idx2 = next(gss.split(range(len(ds)), groups=groups))
+            return Subset(ds, idx1), Subset(ds, idx2)
 
         def get_isomer_sets(ds):
             return set(map(_get_isomer_key, ds))
@@ -182,38 +155,63 @@ class GraphLevelDataModule(GraphDataModule):
             if block_3_split_mode is None:
                 if self.config.group_by_isomers:
                     train_r, val_r = split_ratios[0], split_ratios[1]
-                    train_val_ds, self.test_ds = _isomer_group_split(
-                        dataset, train_r + val_r, stratify=is_binary_task
-                    )
+                    train_val_ds, self.test_ds = _isomer_group_split(dataset, train_r + val_r)
 
                     norm_train_r = train_r / (train_r + val_r)
-                    self.train_ds, self.val_ds = _isomer_group_split(
-                        train_val_ds, norm_train_r, stratify=is_binary_task
-                    )
+                    self.train_ds, self.val_ds = _isomer_group_split(train_val_ds, norm_train_r)
                 else:
-                    if is_binary_task:
-                        train_r, val_r = split_ratios[0], split_ratios[1]
-                        test_r = 1.0 - train_r - val_r
-                        labels = list(map(_get_binary_label, dataset))
-                        indices = list(range(len(dataset)))
-                        
-                        # Split into train+val and test
-                        tv_idx, test_idx, tv_labels, _ = train_test_split(
-                            indices, labels, test_size=test_r, stratify=labels, random_state=self.random_seed
-                        )
-                        # Split train+val into train and val
-                        norm_train_r = train_r / (train_r + val_r)
-                        train_idx, val_idx = train_test_split(
-                            tv_idx, train_size=norm_train_r, stratify=tv_labels, random_state=self.random_seed
-                        )
-                        
-                        self.train_ds = Subset(dataset, train_idx)
-                        self.val_ds = Subset(dataset, val_idx)
-                        self.test_ds = Subset(dataset, test_idx)
+                    self.train_ds, self.val_ds, self.test_ds = split_dataset(
+                        dataset, split_ratios, self.reseed_generator()
+                    )
+            elif block_3_split_mode == "train_holdout":
+                # Fixed held-out block-3 test set, identical across training regimes
+                # (3d-only, 345-full, 345-mini). `test` = graphs whose isomer key is in
+                # the frozen holdout file; `train_val_pool` = all remaining graphs of the
+                # loaded blocks. Because the loader override above set block_3_only=False,
+                # the pool here already contains 3d + 4d + 5d.
+                if self.config.holdout_test_keys_file is None:
+                    raise ValueError(
+                        "block_3_split_mode='train_holdout' requires `holdout_test_keys_file`."
+                    )
+                with open(self.config.holdout_test_keys_file) as fh:
+                    holdout_keys = set(json.load(fh))
+
+                test_indices = []
+                train_val_indices = []
+                b3_only_train = self.config.holdout_train_block_3_only
+                for i, d in enumerate(dataset):
+                    if _get_isomer_key(d) in holdout_keys:
+                        test_indices.append(i)
+                    elif b3_only_train and not d.is_from_block_3:
+                        continue  # 3d-only training pool (baseline sharing the same test T)
                     else:
-                        self.train_ds, self.val_ds, self.test_ds = split_dataset(
-                            dataset, split_ratios, self.reseed_generator()
-                        )
+                        train_val_indices.append(i)
+
+                self.test_ds = Subset(dataset, test_indices)
+                train_val_pool = Subset(dataset, train_val_indices)
+
+                train_r, val_r = split_ratios[0], split_ratios[1]
+                norm_train_r = train_r / (train_r + val_r)
+                if self.config.group_by_isomers:
+                    self.train_ds, self.val_ds = _isomer_group_split(train_val_pool, norm_train_r)
+                else:
+                    num_train = int(len(train_val_pool) * norm_train_r)
+                    num_val = len(train_val_pool) - num_train
+                    self.train_ds, self.val_ds = random_split(
+                        train_val_pool, [num_train, num_val], self.reseed_generator()
+                    )
+
+                # "mini" regime: cap the training set to a fixed number of graphs so that
+                # models are compared at an equal data budget (isolate diversity from
+                # sheer quantity). Val and test are left untouched.
+                max_train = self.config.max_train_graphs
+                if max_train is not None and len(self.train_ds) > max_train:
+                    rng = random.Random(self.random_seed)
+                    keep = sorted(rng.sample(range(len(self.train_ds)), max_train))
+                    self.train_ds = Subset(self.train_ds, keep)
+                    print(f"[train_holdout] Subsampled train set to {len(self.train_ds)} graphs "
+                          f"(max_train_graphs={max_train}, seed={self.random_seed}).")
+
             else:
                 block_3_indices = []
                 non_block_3_indices = []
@@ -243,22 +241,11 @@ class GraphLevelDataModule(GraphDataModule):
                 self.test_ds = test_pool
 
                 if self.config.group_by_isomers:
-                    self.train_ds, self.val_ds = _isomer_group_split(
-                        train_val_pool, norm_train_r, stratify=is_binary_task
-                    )
+                    self.train_ds, self.val_ds = _isomer_group_split(train_val_pool, norm_train_r)
                 else:
-                    if is_binary_task:
-                        labels = list(map(_get_binary_label, train_val_pool))
-                        indices = list(range(len(train_val_pool)))
-                        train_idx, val_idx = train_test_split(
-                            indices, train_size=norm_train_r, stratify=labels, random_state=self.random_seed
-                        )
-                        self.train_ds = Subset(train_val_pool, train_idx)
-                        self.val_ds = Subset(train_val_pool, val_idx)
-                    else:
-                        num_train = int(len(train_val_pool) * norm_train_r)
-                        num_val = len(train_val_pool) - num_train
-                        self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val], self.reseed_generator())
+                    num_train = int(len(train_val_pool) * norm_train_r)
+                    num_val = len(train_val_pool) - num_train
+                    self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val], self.reseed_generator())
         else:
             self.train_ds = Subset(dataset, dataset.split_indices["train"])
             self.val_ds   = Subset(dataset, dataset.split_indices["val"])
@@ -277,62 +264,25 @@ class GraphLevelDataModule(GraphDataModule):
 
         print(self.test_ds[0].y)
 
+        # Freeze the current test set as a reusable holdout: dump its isomer keys.
+        # Run this once on the block-3-only baseline to create the file that the
+        # `train_holdout` regimes then consume via `holdout_test_keys_file`.
+        if self.config.dump_test_keys_file is not None:
+            test_keys = sorted(get_isomer_sets(self.test_ds))
+            out_dir = os.path.dirname(self.config.dump_test_keys_file)
+            if out_dir:
+                os.makedirs(out_dir, exist_ok=True)
+            with open(self.config.dump_test_keys_file, "w") as fh:
+                json.dump(test_keys, fh)
+            print(f"Dumped {len(test_keys)} test isomer keys to {self.config.dump_test_keys_file}")
+
         self._standarize_output(output_type=self.config.additional_loading_params['prediction_type'],
                                 standarize_lambda=self.config.additional_loading_params['standarize_lambda'],
                                 standarize_f=self.config.additional_loading_params['standarize_f'])
-        
-        full_ds_len = sum(map(len, (
-            self.train_ds, self.val_ds, self.test_ds
-        )))
-
-        print("Total dataset len:", full_ds_len)
-
-        if is_binary_task:
-            def print_split_stats(split_name, ds):
-                if ds is None or len(ds) == 0:
-                    print(f"len of {split_name} is 0")
-                    return
-                
-                # Extract all labels for this split
-                labels = [_get_binary_label(d) for d in ds]
-                total = len(labels)
-                pos_count = sum(labels)
-                neg_count = total - pos_count
-                pos_pct = (pos_count / total) * 100
-                
-                print(f"len of {split_name} is {total} ({total/full_ds_len:.2%} of all) | Pos: {pos_count} ({pos_pct:.2f}%) | Neg: {neg_count}")
-
-            print_split_stats("train", self.train_ds)
-            print_split_stats("val", self.val_ds)
-            print_split_stats("test", self.test_ds)
-        else:
-            for ds_label, ds_subset in(
-                ("train", self.train_ds),
-                ("val", self.val_ds),
-                ("test", self.test_ds)
-            ):
-                ds_len = len(ds_subset)
-
-                print(f"len of {ds_label} is {ds_len} ({ds_len/full_ds_len:.2%} of all)")
-
-    def _get_dataloader(self, dataset: Subset, **kwargs) -> DataLoader:
-        return DataLoader(dataset, batch_size=self.batch_size, drop_last=True, **kwargs)
-
-    def train_dataloader(self) -> DataLoader:
-        assert self.train_ds is not None
-        return self._get_dataloader(self.train_ds, shuffle=True)
-
-    def val_dataloader(self) -> DataLoader:
-        assert self.val_ds is not None
-        return self._get_dataloader(self.val_ds)
-
-    def test_dataloader(self) -> DataLoader:
-        assert self.test_ds is not None
-        return self._get_dataloader(self.test_ds)
-
-    def train_inference_dataloader(self) -> DataLoader:
-        assert self.train_ds is not None
-        return self._get_dataloader(self.train_ds, shuffle=False)
+        print(f"Loaded dataset '{name}' with {len(dataset)} graphs.")
+        print(f'len of train is {len(self.train_ds)}')
+        print(f'len of val is {len(self.val_ds)}')
+        print(f'len of test is {len(self.test_ds)}')
 
     def _standarize_output(self, output_type: str, standarize_lambda: bool, standarize_f: bool):
         if self.train_ds is None:
@@ -547,6 +497,28 @@ class GraphLevelDataModule(GraphDataModule):
             return
         else:
             raise ValueError(f"Unknown standarization type: {type!r}. Expected 'pairs', 'vector', or 'only_lambdas'.")
+
+
+
+        
+    def _get_dataloader(self, dataset: Subset, **kwargs) -> DataLoader:
+        return DataLoader(dataset, batch_size=self.batch_size, drop_last=True, **kwargs)
+
+    def train_dataloader(self) -> DataLoader:
+        assert self.train_ds is not None
+        return self._get_dataloader(self.train_ds, shuffle=True)
+
+    def val_dataloader(self) -> DataLoader:
+        assert self.val_ds is not None
+        return self._get_dataloader(self.val_ds)
+
+    def test_dataloader(self) -> DataLoader:
+        assert self.test_ds is not None
+        return self._get_dataloader(self.test_ds)
+
+    def train_inference_dataloader(self) -> DataLoader:
+        assert self.train_ds is not None
+        return self._get_dataloader(self.train_ds, shuffle=False)
 
 class OpenQDCToPyG(InMemoryDataset):
     def __init__(self, oqdc_ds, root="data/datasets/",

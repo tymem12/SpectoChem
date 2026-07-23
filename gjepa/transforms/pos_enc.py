@@ -14,7 +14,10 @@ from torch_geometric.utils import (
     to_scipy_sparse_matrix,
 )
 from gjepa.utils.graph_level import calc_edge_index, calc_edge_weight
-from dscribe.descriptors import SOAP
+try:
+    from dscribe.descriptors import SOAP
+except ModuleNotFoundError:
+    SOAP = None  # dscribe optional; only needed for SOAP positional encoding
 from ase import Atoms
 
 

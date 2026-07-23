@@ -3,7 +3,12 @@ from .gnn_pos import PosEncoder, PositionalCustomGNN
 from .gps import GraphGPS
 from .schnet import SchNetEncoder
 from .dimenet import DimeNetEncoder
-from .uma import UMAEncoder
+try:
+    from .uma import UMAEncoder
+except ModuleNotFoundError as _e:   # fairchem-core optional; only needed for the UMA backbone
+    UMAEncoder = None
+    import warnings as _warnings
+    _warnings.warn(f"UMAEncoder unavailable ({_e}); install fairchem-core to use the UMA backbone.")
 from .dummy_model import DummyModel
 from .gated_attention_pool import GatedAttentionPoolModel
 from .transformer_attention_pool import TransformerAttentionPoolModel
