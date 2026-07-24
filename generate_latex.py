@@ -22,46 +22,6 @@ def format_val(mean, std, scale=1.0, rank=None):
         return f"\\underline{{{val_str}}}"
     return val_str
 
-def format_time_with_std(mean_sec: float, std_sec: float, dataset: str = "", col_name: str = "") -> str:
-    """Custom time formatting featuring subseconds for binary/regression and full seconds for spectral."""
-    if pd.isna(mean_sec): return "---"
-    
-    is_test = "test" in col_name.lower() or col_name == "time_seconds"
-    ds_lower = dataset.lower()
-    
-    # Configure granularity based on table type
-    if "binary" in ds_lower or "regression" in ds_lower:
-        sec_decimals = 1  # Seconds and subseconds (1 decimal place)
-    elif "spectral" in ds_lower:
-        sec_decimals = 0 if not is_test else 1  # Train: show seconds too (no decimals); Test: 1 decimal
-    else:
-        sec_decimals = 0
-
-    def sec_to_str(val: float) -> str:
-        if pd.isna(val) or val == 0: return "0s"
-            
-        d = int(val // 86400)
-        rem = val % 86400
-        h = int(rem // 3600)
-        rem = rem % 3600
-        m = int(rem // 60)
-        s = rem % 60
-        
-        parts = []
-        if d > 0: parts.append(f"{d}d")
-        if h > 0: parts.append(f"{h}h")
-        if m > 0: parts.append(f"{m}m")
-        
-        if sec_decimals > 0:
-            s_str = f"{s:.{sec_decimals}f}"
-            parts.append(f"{s_str}s")
-        else:
-            parts.append(f"{int(round(s))}s")
-            
-        return "".join(parts) if parts else "0s"
-
-    return f"{sec_to_str(mean_sec)} $\\pm$ {sec_to_str(std_sec)}" if pd.notna(std_sec) and std_sec != 0 else sec_to_str(mean_sec)
-
 
 def load_data(json_path="experiment_results.json"):
     with open(json_path, 'r') as f:
@@ -78,8 +38,8 @@ def load_data(json_path="experiment_results.json"):
     return df_bin, df_reg
 
 
-def generate_combined_latex_table(df, dataset_filter, split_keys, split_titles, main_caption, columns_spec, header_lines, dataset_for_time):
-    """Generates combined tables for Binary and Spectral."""
+def generate_combined_latex_table(df, dataset_filter, split_keys, split_titles, main_caption, columns_spec, header_lines):
+    """Generates combined tables for Binary and Spectral without time metrics."""
     if df.empty: return f"% No data found for: {main_caption}"
     
     lines = [
@@ -104,8 +64,7 @@ def generate_combined_latex_table(df, dataset_filter, split_keys, split_titles, 
             
             for col, higher_is_better, _, do_rank in columns_spec:
                 if not do_rank or col not in agg.columns: continue
-                # Exclude Null Model from the time ranking pool
-                means = agg[col]['mean'].drop(labels=['Null Model'], errors='ignore').dropna()
+                means = agg[col]['mean'].dropna()
                 if means.empty: continue
                 unique_means = sorted(means.unique(), reverse=higher_is_better)
                 best = unique_means[0] if len(unique_means) > 0 else None
@@ -121,11 +80,7 @@ def generate_combined_latex_table(df, dataset_filter, split_keys, split_titles, 
         for model in MODELS:
             row = [model]
             for col, higher_is_better, scale, do_rank in columns_spec:
-                is_time_col = "time" in col.lower()
-                
-                if model == "Null Model" and is_time_col:
-                    row.append("---")
-                elif model in agg.index and col in agg.columns and pd.notna(agg.loc[model, (col, 'mean')]):
+                if model in agg.index and col in agg.columns and pd.notna(agg.loc[model, (col, 'mean')]):
                     mean_v = agg.loc[model, (col, 'mean')]
                     std_v = agg.loc[model, (col, 'std')]
                     
@@ -135,13 +90,7 @@ def generate_combined_latex_table(df, dataset_filter, split_keys, split_titles, 
                         if b is not None and np.isclose(mean_v, b, atol=1e-10): rank = 1
                         elif s is not None and np.isclose(mean_v, s, atol=1e-10): rank = 2
                     
-                    if is_time_col:
-                        time_str = format_time_with_std(mean_v, std_v, dataset=dataset_for_time, col_name=col)
-                        if rank == 1: row.append(f"\\textbf{{{time_str}}}")
-                        elif rank == 2: row.append(f"\\underline{{{time_str}}}")
-                        else: row.append(time_str)
-                    else:
-                        row.append(format_val(mean_v, std_v, scale=scale, rank=rank))
+                    row.append(format_val(mean_v, std_v, scale=scale, rank=rank))
                 else:
                     row.append("---")
             lines.append(" & ".join(row) + " \\\\")
@@ -167,16 +116,14 @@ def generate_combined_latex_table(df, dataset_filter, split_keys, split_titles, 
 
 
 def generate_stacked_regression_table(df, split_keys, split_titles, main_caption):
-    """Generates the Regression table stacking eV and log10(f) targets as clean rows without multirow."""
+    """Generates the Regression table stacking eV and log10(f) targets without time metrics."""
     if df.empty: return f"% No data found for: {main_caption}"
     
     columns_spec = [
         ('raw_mae', False, 1.0, True),
         ('MAE', False, 1.0, True),
         ('MSE', False, 1.0, True),
-        ('R2', True, 1.0, True),
-        ('train_time_seconds', False, 1.0, True),
-        ('time_seconds', False, 1.0, True)
+        ('R2', True, 1.0, True)
     ]
     numeric_cols = [c[0] for c in columns_spec]
 
@@ -197,9 +144,9 @@ def generate_stacked_regression_table(df, split_keys, split_titles, main_caption
         lines.append(f"\\centerline{{\\textbf{{{split_titles[idx]}}}}}")
         lines.append(f"\\vspace{{0.1cm}}")
         lines.append("\\resizebox{\\textwidth}{!}{")
-        lines.append("\\begin{tabular}{llcccccc}")
+        lines.append("\\begin{tabular}{llcccc}")
         lines.append("\\toprule")
-        lines.append("\\textbf{$\\hat{y}$} & \\textbf{Model} & \\textbf{Raw MAE} $\\downarrow$ & \\textbf{MAE} $\\downarrow$ & \\textbf{MSE} $\\downarrow$ & \\textbf{R$^2$} $\\uparrow$ & \\textbf{Train Time} $\\downarrow$ & \\textbf{Test Time} $\\downarrow$ \\\\")
+        lines.append("\\textbf{$\\hat{y}$} & \\textbf{Model} & \\textbf{Raw MAE} $\\downarrow$ & \\textbf{MAE} $\\downarrow$ & \\textbf{MSE} $\\downarrow$ & \\textbf{R$^2$} $\\uparrow$ \\\\")
         lines.append("\\midrule")
         
         for t_idx, (t_label, t_dataset) in enumerate(targets):
@@ -214,7 +161,7 @@ def generate_stacked_regression_table(df, split_keys, split_titles, main_caption
                 
                 for col, higher_is_better, _, do_rank in columns_spec:
                     if not do_rank or col not in agg.columns: continue
-                    means = agg[col]['mean'].drop(labels=['Null Model'], errors='ignore').dropna()
+                    means = agg[col]['mean'].dropna()
                     if means.empty: continue
                     unique_means = sorted(means.unique(), reverse=higher_is_better)
                     best = unique_means[0] if len(unique_means) > 0 else None
@@ -223,16 +170,11 @@ def generate_stacked_regression_table(df, split_keys, split_titles, main_caption
 
             for m_idx, model in enumerate(MODELS):
                 row = []
-                # Replaced multirow logic entirely with a simple first-row label placement
                 row.append(t_label if m_idx == 0 else "")
                 row.append(model)
                 
                 for col, higher_is_better, scale, do_rank in columns_spec:
-                    is_time_col = "time" in col.lower()
-                    
-                    if model == "Null Model" and is_time_col:
-                        row.append("---")
-                    elif model in agg.index and col in agg.columns and pd.notna(agg.loc[model, (col, 'mean')]):
+                    if model in agg.index and col in agg.columns and pd.notna(agg.loc[model, (col, 'mean')]):
                         mean_v = agg.loc[model, (col, 'mean')]
                         std_v = agg.loc[model, (col, 'std')]
                         
@@ -242,13 +184,7 @@ def generate_stacked_regression_table(df, split_keys, split_titles, main_caption
                             if b is not None and np.isclose(mean_v, b, atol=1e-10): rank = 1
                             elif s is not None and np.isclose(mean_v, s, atol=1e-10): rank = 2
                         
-                        if is_time_col:
-                            time_str = format_time_with_std(mean_v, std_v, dataset="tmqmg_regression", col_name=col)
-                            if rank == 1: row.append(f"\\textbf{{{time_str}}}")
-                            elif rank == 2: row.append(f"\\underline{{{time_str}}}")
-                            else: row.append(time_str)
-                        else:
-                            row.append(format_val(mean_v, std_v, scale=scale, rank=rank))
+                        row.append(format_val(mean_v, std_v, scale=scale, rank=rank))
                     else:
                         row.append("---")
                 lines.append(" & ".join(row) + " \\\\")
@@ -291,38 +227,34 @@ def main():
         print("experiment_results.json not found. Place it in the exact directory.")
         return
 
-    # 1. BINARY SPECIFICATIONS (Ranking True for times, Arrow added to header)
+    # 1. BINARY SPECIFICATIONS 
     bin_cols = [
         ('F1', True, 1.0, True),
         ('Precision', True, 1.0, True),
         ('Recall', True, 1.0, True),
-        ('Accuracy', True, 1.0, True),
-        ('train_time_seconds', False, 1.0, True),  
-        ('time_seconds', False, 1.0, True) 
+        ('Accuracy', True, 1.0, True)
     ]
     bin_header = [
-        "\\begin{tabular}{lcccccc}",
+        "\\begin{tabular}{lcccc}",
         "\\toprule",
-        "\\textbf{Model} & \\textbf{F1} $\\uparrow$ & \\textbf{Precision} $\\uparrow$ & \\textbf{Recall} $\\uparrow$ & \\textbf{Accuracy} $\\uparrow$ & \\textbf{Train Time} $\\downarrow$ & \\textbf{Test Time} $\\downarrow$ \\\\",
+        "\\textbf{Model} & \\textbf{F1} $\\uparrow$ & \\textbf{Precision} $\\uparrow$ & \\textbf{Recall} $\\uparrow$ & \\textbf{Accuracy} $\\uparrow$ \\\\",
         "\\midrule"
     ]
     bin_splits = ["none", "test"]
 
-    # 3. SPECTRAL SPECIFICATIONS (Ranking True for times, Arrow added to header)
+    # 3. SPECTRAL SPECIFICATIONS 
     spec_cols = [
         ('metric_jsd', False, 1.0, True),
         ('metric_wasserstein', False, 1.0, True),
         ('metric_sid', False, 1.0, True),
         ('metric_stmse', False, 1.0, True),
         ('metric_smse', False, 1e7, True),
-        ('metric_srmse', False, 1e4, True),
-        ('train_time_seconds', False, 1.0, True),
-        ('test_time_seconds', False, 1.0, True)
+        ('metric_srmse', False, 1e4, True)
     ]
     spec_header = [
-        "\\begin{tabular}{lcccccccc}",
+        "\\begin{tabular}{lcccccc}",
         "\\toprule",
-        "\\textbf{Model} & \\textbf{JSD} $\\downarrow$ & \\textbf{Wasserstein} $\\downarrow$ & \\textbf{SID} $\\downarrow$ & \\textbf{STMSE} $\\downarrow$ & \\textbf{SMSE} ($\\times 10^{-7}$) $\\downarrow$ & \\textbf{SRMSE} ($\\times 10^{-4}$) $\\downarrow$ & \\textbf{Train Time} $\\downarrow$ & \\textbf{Test Time} $\\downarrow$ \\\\",
+        "\\textbf{Model} & \\textbf{JSD} $\\downarrow$ & \\textbf{Wasserstein} $\\downarrow$ & \\textbf{SID} $\\downarrow$ & \\textbf{STMSE} $\\downarrow$ & \\textbf{SMSE} ($\\times 10^{-7}$) $\\downarrow$ & \\textbf{SRMSE} ($\\times 10^{-4}$) $\\downarrow$ \\\\",
         "\\midrule"
     ]
     spectral_splits = ["null", "test"]
@@ -334,11 +266,11 @@ def main():
     bin_table = generate_combined_latex_table(
         df_bin, "TMQM_SPECTO_BINARY", bin_splits, split_titles, 
         "Binary classification metrics on tmQMg*.", 
-        bin_cols, bin_header, dataset_for_time="tmqmg_binary"
+        bin_cols, bin_header
     )
     save_table(bin_table, "binary_metrics.tex")
 
-    # 2. Regression Table (Stacked & updated parameters)
+    # 2. Regression Table (Stacked)
     reg_table = generate_stacked_regression_table(
         df_reg, spectral_splits, split_titles, 
         "Regression metrics for 10 eV and $\\log_{10}(f)$ targets on tmQMg*."
@@ -349,7 +281,7 @@ def main():
     spec_table = generate_combined_latex_table(
         df_reg, "TMQM_SPECTO_SPECTRAL", spectral_splits, split_titles, 
         "Spectral reconstruction metrics on tmQMg*.", 
-        spec_cols, spec_header, dataset_for_time="tmqmg_spectral"
+        spec_cols, spec_header
     )
     save_table(spec_table, "spectral_metrics.tex")
 
