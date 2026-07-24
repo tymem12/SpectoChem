@@ -63,9 +63,6 @@ def main(cfg: DictConfig) -> None:
         reload_dataloaders_every_n_epochs=model_config.reload_dataloaders_every_n_epochs,
     )
 
-    trainer.fit(model, datamodule=datamodule)
-
-
     start_train_time = time.perf_counter()
     trainer.fit(model, datamodule=datamodule)
     end_train_time = time.perf_counter()
