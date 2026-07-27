@@ -277,6 +277,30 @@ class GraphLevelDataModule(GraphDataModule):
 
         print("Test ds first entry:", self.test_ds[0].y)
 
+        # -- Atom leakage test
+        def _get_atoms(ds): 
+            return set().union(*(d.z.tolist() for d in ds))
+        
+        train_atoms = _get_atoms(self.train_ds)
+        val_atoms = _get_atoms(self.val_ds)
+        test_atoms = _get_atoms(self.test_ds)
+        
+        missing_atoms = (val_atoms | test_atoms) - train_atoms
+        if missing_atoms:
+            bad_atom = next(iter(missing_atoms))
+            # Find the offending molecule in val or test
+            bad_d = next(d for ds in (self.val_ds, self.test_ds) for d in ds if bad_atom in d.z.tolist())
+            
+            raise ValueError(
+                f"Atom {bad_atom} is present in val/test but missing from the training set!\n"
+                f"Molecule CSD: {bad_d.CSD_code} | SMILES: {bad_d.smiles}\n"
+                f"Train atoms: {sorted(train_atoms)}\n"
+                f"Val atoms:   {sorted(val_atoms)}\n"
+                f"Test atoms:  {sorted(test_atoms)}"
+            )
+        
+        # --- ATOM LEAKAGE CHECK END ---
+
         self._standarize_output(output_type=self.config.additional_loading_params['prediction_type'],
                                 standarize_lambda=self.config.additional_loading_params['standarize_lambda'],
                                 standarize_f=self.config.additional_loading_params['standarize_f'])
