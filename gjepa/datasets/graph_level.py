@@ -302,15 +302,48 @@ class GraphLevelDataModule(GraphDataModule):
                                 b3_test_csds = [dataset[idxs[i]].CSD_code for i in b_test_idx]
                                 content = "\n".join(map(str, b3_test_csds))
 
-                                save_path = Path(self.config.root_dir) / "raw" / "block_3d_test_per_seed" / f"{self.random_seed}.txt"
+                                # Route to different folders based on stratification
+                                subfolder = "binary_stratified" if is_binary_task else "regression_non_stratified"
+                                save_path = Path(self.config.root_dir) / "raw" / "block_3d_test_per_seed" / subfolder / f"{self.random_seed}.txt"
+                                
                                 save_path.parent.mkdir(parents=True, exist_ok=True)
 
                                 if save_path.exists():
-                                    existing_content = save_path.read_text()
-                                    if existing_content != content:
-                                        raise ValueError(
-                                            f"Block 3 test CSD codes mismatch for seed {self.random_seed} at {save_path}!"
+                                    existing_content = save_path.read_text().strip()
+                                    current_content = content.strip()
+                                    
+                                    if existing_content != current_content:
+                                        expected_csds = existing_content.splitlines() if existing_content else []
+                                        found_csds = [str(c) for c in b3_test_csds]
+                                        
+                                        expected_set = set(expected_csds)
+                                        found_set = set(found_csds)
+                                        
+                                        # Check if the contents are the same but the order changed
+                                        if expected_set == found_set:
+                                            mismatches = [
+                                                f"Pos {idx}: Expected {e}, got {f}" 
+                                                for idx, (e, f) in enumerate(zip(expected_csds, found_csds)) if e != f
+                                            ]
+                                            mismatch_type = "ORDER MISMATCH (sets contain identical CSD codes but different order)"
+                                        else:
+                                            missing = expected_set - found_set
+                                            extra = found_set - expected_set
+                                            mismatches = [f"Missing (in file, missing from split): {x}" for x in missing] + \
+                                                         [f"Extra (in split, not in file): {x}" for x in extra]
+                                            mismatch_type = "CONTENT MISMATCH (different molecules selected)"
+
+                                        error_msg = (
+                                            f"Block 3 test CSD codes mismatch for seed {self.random_seed} at {save_path}!\n"
+                                            f"--- Type: {mismatch_type} ---\n"
+                                            f"Expected count: {len(expected_csds)}\n"
+                                            f"Found count:    {len(found_csds)}\n"
+                                            f"Total mismatches: {len(mismatches)}\n"
+                                            f"First 5 mismatches:\n" + 
+                                            "\n".join(f"  > {m}" for m in mismatches[:5])
                                         )
+                                        raise ValueError(error_msg)
+                                        
                                     print(f"Verified {len(b3_test_csds)} Block 3 test CSD codes against existing file at {save_path}")
                                 else:
                                     save_path.write_text(content)
