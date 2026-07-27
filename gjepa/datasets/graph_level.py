@@ -237,28 +237,111 @@ class GraphLevelDataModule(GraphDataModule):
                         train_val_pool, test_pool = block_3_subset, non_block_3_subset
                     case "test":
                         train_val_pool, test_pool = non_block_3_subset, block_3_subset
+                    case "345":
+                        # Helper to split any dataset pool using isomer or binary stratification logic
+                        # Now explicitly returns flat indices relative to sub_ds
+                        def _split_sub_pool(sub_ds):
+                            if self.config.group_by_isomers:
+                                tr_r, v_r = split_ratios[0], split_ratios[1]
+                                norm_tr_r = tr_r / (tr_r + v_r)
+                                tv_ds, t_ds = _isomer_group_split(sub_ds, tr_r + v_r, stratify=is_binary_task)
+                                tr_ds, v_ds = _isomer_group_split(tv_ds, norm_tr_r, stratify=is_binary_task)
+                                
+                                # Resolve nested indices from the two-step split
+                                tr_idx = [tv_ds.indices[i] for i in tr_ds.indices]
+                                val_idx = [tv_ds.indices[i] for i in v_ds.indices]
+                                return tr_idx, val_idx, t_ds.indices
+                            else:
+                                if is_binary_task:
+                                    tr_r, v_r = split_ratios[0], split_ratios[1]
+                                    test_r = 1.0 - tr_r - v_r
+                                    norm_tr_r = tr_r / (tr_r + v_r)
+                                    labels = [_get_binary_label(d) for d in sub_ds]
+                                    indices = list(range(len(sub_ds)))
+                                    
+                                    tv_idx, test_idx, tv_labels, _ = train_test_split(
+                                        indices, labels, test_size=test_r, stratify=labels, random_state=self.random_seed
+                                    )
+                                    tr_idx_nested, val_idx_nested = train_test_split(
+                                        tv_idx, train_size=norm_tr_r, stratify=tv_labels, random_state=self.random_seed
+                                    )
+                                    
+                                    # Resolve nested indices
+                                    tr_idx = [tv_idx[i] for i in tr_idx_nested]
+                                    val_idx = [tv_idx[i] for i in val_idx_nested]
+                                    return tr_idx, val_idx, test_idx
+                                else:
+                                    tr_ds, v_ds, t_ds = split_dataset(sub_ds, split_ratios, self.reseed_generator())
+                                    return tr_ds.indices, v_ds.indices, t_ds.indices
+
+                        # Group overall dataset indices per block
+                        block_indices = {3: [], 4: [], 5: []}
+                        for i, d in enumerate(dataset):
+                            b_id = int(d.block_id.view(-1)[0].item())
+                            block_indices[b_id].append(i)
+
+                        train_idx, val_idx, test_idx = [], [], []
+
+                        # Split each block independently with same random state
+                        for b_id in [3, 4, 5]:
+                            idxs = block_indices[b_id]
+                            if not idxs:
+                                continue
+                            b_ds = Subset(dataset, idxs)
+                            
+                            # Receive flat indices relative to b_ds
+                            b_tr_idx, b_val_idx, b_test_idx = _split_sub_pool(b_ds)
+
+                            # Map back to absolute dataset indices
+                            train_idx.extend([idxs[i] for i in b_tr_idx])
+                            val_idx.extend([idxs[i] for i in b_val_idx])
+                            test_idx.extend([idxs[i] for i in b_test_idx])
+
+                            if b_id == 3:
+                                # Save or verify Block 3 test CSD codes
+                                b3_test_csds = [dataset[idxs[i]].CSD_code for i in b_test_idx]
+                                content = "\n".join(map(str, b3_test_csds))
+
+                                save_path = Path(self.config.root_dir) / "raw" / "block_3d_test_per_seed" / f"{self.random_seed}.txt"
+                                save_path.parent.mkdir(parents=True, exist_ok=True)
+
+                                if save_path.exists():
+                                    existing_content = save_path.read_text()
+                                    if existing_content != content:
+                                        raise ValueError(
+                                            f"Block 3 test CSD codes mismatch for seed {self.random_seed} at {save_path}!"
+                                        )
+                                    print(f"Verified {len(b3_test_csds)} Block 3 test CSD codes against existing file at {save_path}")
+                                else:
+                                    save_path.write_text(content)
+                                    print(f"Saved {len(b3_test_csds)} Block 3 test CSD codes to {save_path}")
+
+                        self.train_ds = Subset(dataset, train_idx)
+                        self.val_ds   = Subset(dataset, val_idx)
+                        self.test_ds  = Subset(dataset, test_idx)
                     case _:
                         raise ValueError(f"Invalid `block_3_split_mode` {block_3_split_mode}")
 
-                self.test_ds = test_pool
-
-                if self.config.group_by_isomers:
-                    self.train_ds, self.val_ds = _isomer_group_split(
-                        train_val_pool, norm_train_r, stratify=is_binary_task
-                    )
-                else:
-                    if is_binary_task:
-                        labels = list(map(_get_binary_label, train_val_pool))
-                        indices = list(range(len(train_val_pool)))
-                        train_idx, val_idx = train_test_split(
-                            indices, train_size=norm_train_r, stratify=labels, random_state=self.random_seed
+                if block_3_split_mode in ["train", "test"]:
+                    self.test_ds = test_pool
+    
+                    if self.config.group_by_isomers:
+                        self.train_ds, self.val_ds = _isomer_group_split(
+                            train_val_pool, norm_train_r, stratify=is_binary_task
                         )
-                        self.train_ds = Subset(train_val_pool, train_idx)
-                        self.val_ds = Subset(train_val_pool, val_idx)
                     else:
-                        num_train = int(len(train_val_pool) * norm_train_r)
-                        num_val = len(train_val_pool) - num_train
-                        self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val], self.reseed_generator())
+                        if is_binary_task:
+                            labels = list(map(_get_binary_label, train_val_pool))
+                            indices = list(range(len(train_val_pool)))
+                            train_idx, val_idx = train_test_split(
+                                indices, train_size=norm_train_r, stratify=labels, random_state=self.random_seed
+                            )
+                            self.train_ds = Subset(train_val_pool, train_idx)
+                            self.val_ds = Subset(train_val_pool, val_idx)
+                        else:
+                            num_train = int(len(train_val_pool) * norm_train_r)
+                            num_val = len(train_val_pool) - num_train
+                            self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val], self.reseed_generator())
         else:
             self.train_ds = Subset(dataset, dataset.split_indices["train"])
             self.val_ds   = Subset(dataset, dataset.split_indices["val"])
@@ -273,7 +356,22 @@ class GraphLevelDataModule(GraphDataModule):
             assert train_isomers.isdisjoint(test_isomers), "Data leakage: Train & Test share isomers"
             assert val_isomers.isdisjoint(test_isomers), "Data leakage: Val & Test share isomers"
 
-            print(f"Unique isomers: train: {len(train_isomers)} | val: {len(val_isomers)} | test: {len(test_isomers)}")
+            train_iso_count = len(train_isomers)
+            val_iso_count = len(val_isomers)
+            test_iso_count = len(test_isomers)
+            
+            train_ds_len = len(self.train_ds)
+            val_ds_len = len(self.val_ds)
+            test_ds_len = len(self.test_ds)
+
+
+            train_iso_pct = (train_iso_count / train_ds_len * 100)
+            val_iso_pct = (val_iso_count / val_ds_len * 100)
+            test_iso_pct = (test_iso_count / test_ds_len * 100)
+
+            print(f"Unique isomers: train: {train_iso_count} ({train_iso_pct:.2f}%) | "
+                  f"val: {val_iso_count} ({val_iso_pct:.2f}%) | "
+                  f"test: {test_iso_count} ({test_iso_pct:.2f}%)")
 
         print("Test ds first entry:", self.test_ds[0].y)
 
@@ -319,30 +417,58 @@ class GraphLevelDataModule(GraphDataModule):
         if is_binary_task:
             def print_split_stats(split_name, ds):
                 if ds is None or len(ds) == 0:
-                    print(f"len of {split_name} is 0")
+                    print(f"\n--- {split_name.upper()} SPLIT ---")
+                    print("Total: 0")
                     return
                 
-                # Extract all labels for this split
                 labels = [_get_binary_label(d) for d in ds]
                 total = len(labels)
                 pos_count = sum(labels)
                 neg_count = total - pos_count
                 pos_pct = (pos_count / total) * 100
-                
-                print(f"len of {split_name} is {total} ({total/full_ds_len:.2%} of all) | Pos: {pos_count} ({pos_pct:.2f}%) | Neg: {neg_count}")
+                neg_pct = (neg_count / total) * 100
+
+                block_counts = {3: 0, 4: 0, 5: 0}
+                for d in ds:
+                    b_id = int(d.block_id.view(-1)[0].item())
+                    block_counts[b_id] += 1
+
+                print(f"\n--- {split_name.upper()} SPLIT ---")
+                print(f"Total:  {total} ({total/full_ds_len:.2%} of all)")
+                print(f"Labels: Pos: {pos_count} ({pos_pct:.2f}%) | Neg: {neg_count} ({neg_pct:.2f}%)")
+                print("Blocks:")
+                for b in [3, 4, 5]:
+                    cnt = block_counts[b]
+                    pct = (cnt / total * 100) if total > 0 else 0
+                    print(f"  > {b}d: {cnt} ({pct:.2f}%)")
 
             print_split_stats("train", self.train_ds)
             print_split_stats("val", self.val_ds)
             print_split_stats("test", self.test_ds)
         else:
-            for ds_label, ds_subset in(
+            for ds_label, ds_subset in (
                 ("train", self.train_ds),
                 ("val", self.val_ds),
                 ("test", self.test_ds)
             ):
-                ds_len = len(ds_subset)
+                if ds_subset is None or len(ds_subset) == 0:
+                    print(f"\n--- {ds_label.upper()} SPLIT ---")
+                    print("Total: 0")
+                    continue
 
-                print(f"len of {ds_label} is {ds_len} ({ds_len/full_ds_len:.2%} of all)")
+                ds_len = len(ds_subset)
+                block_counts = {3: 0, 4: 0, 5: 0}
+                for d in ds_subset:
+                    b_id = int(d.block_id.view(-1)[0].item())
+                    block_counts[b_id] += 1
+
+                print(f"\n--- {ds_label.upper()} SPLIT ---")
+                print(f"Total: {ds_len} ({ds_len/full_ds_len:.2%} of all)")
+                print("Blocks:")
+                for b in [3, 4, 5]:
+                    cnt = block_counts[b]
+                    pct = (cnt / ds_len * 100) if ds_len > 0 else 0
+                    print(f"  > {b}d: {cnt} ({pct:.2f}%)")
 
     def _get_dataloader(self, dataset: Subset, **kwargs) -> DataLoader:
         return DataLoader(dataset, batch_size=self.batch_size, drop_last=True, **kwargs)

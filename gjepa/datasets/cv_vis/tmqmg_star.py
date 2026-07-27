@@ -155,7 +155,7 @@ class TMQMGStarDataset(InMemoryDataset):
 
     @staticmethod
     def _get_csv_filename(block_3_only) -> str:
-        return "raw/uvvis_final_40k.csv" if block_3_only else "raw/tmqm_all.csv"
+        return "raw/tmc_blocks/3d.csv" if block_3_only else "raw/tmqm_all.csv"
 
     def _csv_filename(self) -> str:
         return self._get_csv_filename(self.block_3_only)
@@ -475,18 +475,33 @@ class TMQMGStarDataset(InMemoryDataset):
             right_on="id"
         )
 
-        if self.mark_block_3:
-            if not self.block_3_only:
-                block_3_csv_path = os.path.join(self.root, self._get_csv_filename(block_3_only=True))
-                if not os.path.exists(block_3_csv_path):
-                    raise FileNotFoundError(f"Block 3 CSV not found for marking: {block_3_csv_path}")
+        tmc_block_path = Path(self.root) / "raw" / "tmc_blocks"
 
-                df_block_3 = pd.read_csv(block_3_csv_path, usecols=["CSD_code"])
-                block_3_codes = set(df_block_3["CSD_code"])
-                df["is_from_block_3"] = df["CSD_code"].isin(block_3_codes)
-            else:
-                df["is_from_block_3"] = True
+        # --- BLOCK IDENTIFICATION & PRE-SPLIT STATS ---
+        tmcs_3d_path = tmc_block_path / "3d.csv"
+        tmcs_4d_path = tmc_block_path / "4d.csv"
+        tmcs_5d_path = tmc_block_path / "5d.csv"
 
+        b3_codes = set(pd.read_csv(tmcs_3d_path, usecols=["CSD_code"])["CSD_code"].astype(str))
+        b4_codes = set(pd.read_csv(tmcs_4d_path, usecols=["CSD_code"])["CSD_code"].astype(str))
+        b5_codes = set(pd.read_csv(tmcs_5d_path, usecols=["CSD_code"])["CSD_code"].astype(str))
+
+        raw_block_counts = {3: 0, 4: 0, 5: 0}
+        for csd in df["CSD_code"].dropna():
+            csd_str = str(csd)
+            if csd_str in b3_codes: raw_block_counts[3] += 1
+            elif csd_str in b4_codes: raw_block_counts[4] += 1
+            elif csd_str in b5_codes: raw_block_counts[5] += 1
+
+        total_raw = len(df)
+        print("\n--- Global Block Statistics (BEFORE Outlier Removal) ---")
+        print(f"Total raw molecules: {total_raw}")
+        for b in [3, 4, 5]:
+            cnt = raw_block_counts[b]
+            pct = (cnt / total_raw * 100) if total_raw > 0 else 0
+            print(f"  Block {b}d: {cnt} ({pct:.2f}%)")
+        print("--------------------------------------------------------\n")
+        
         print(f"Merged dataset: {len(df)} rows (from {len(df_base)} base and {len(df_star)} star)")
 
         required = ["atom_coords", "atom_types", "SMILES", "origin_ID", "CSD_code"]
@@ -514,8 +529,17 @@ class TMQMGStarDataset(InMemoryDataset):
             csd_code = None if pd.isna(row["CSD_code"]) else str(row["CSD_code"])
             kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
 
-            if self.mark_block_3:
-                kwargs["is_from_block_3"] = row["is_from_block_3"]
+            if csd_code in b3_codes:
+                block_id = 3
+            elif csd_code in b4_codes:
+                block_id = 4
+            elif csd_code in b5_codes:
+                block_id = 5
+            else:
+                raise ValueError(f"Invalid block (not any of 3d, 4d, 5d) for molecule: {csd_code!r}")
+
+            kwargs["block_id"] = block_id
+            kwargs["is_from_block_3"] = (block_id == 3)
 
             if self.load_representations:
                 emb = self.precomputed_embedings.get_embedding(csd_code)
@@ -560,7 +584,25 @@ class TMQMGStarDataset(InMemoryDataset):
                 data = self.pre_transform(data)
             data_list.append(data)
 
-        print(f"Positive classes: {pos_classes_counter}, Negative classes: {neg_classes_counter}")
+        total_classes = pos_classes_counter + neg_classes_counter
+        pos_pct = (pos_classes_counter / total_classes * 100) if total_classes > 0 else 0
+        neg_pct = (neg_classes_counter / total_classes * 100) if total_classes > 0 else 0
+        print(f"Positive classes: {pos_classes_counter} ({pos_pct:.2f}%), Negative classes: {neg_classes_counter} ({neg_pct:.2f}%)")
+
+        filtered_block_counts = {3: 0, 4: 0, 5: 0}
+        for d in data_list:
+            b_id = d.block_id
+            filtered_block_counts[b_id] += 1
+
+        total_filtered = len(data_list)
+        print("\n--- Global Block Statistics (AFTER Outlier Removal) ---")
+        print(f"Total filtered molecules: {total_filtered}")
+        for b in [3, 4, 5]:
+            cnt = filtered_block_counts[b]
+            pct = (cnt / total_filtered * 100) if total_filtered > 0 else 0
+            print(f"  Block {b}d: {cnt} ({pct:.2f}%)")
+        print("-------------------------------------------------------\n")
+
         if not data_list:
             raise RuntimeError("No valid molecules processed.")
 
