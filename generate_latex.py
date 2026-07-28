@@ -212,22 +212,36 @@ def generate_stacked_regression_table(df, split_keys, split_titles, main_caption
     return "\n".join(lines)
 
 
-def save_table(content, filename):
-    os.makedirs(TEX_DIR, exist_ok=True)
-    filepath = os.path.join(TEX_DIR, filename)
+def save_table(content, target_dir, filename):
+    os.makedirs(target_dir, exist_ok=True)
+    filepath = os.path.join(target_dir, filename)
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(content)
     print(f"Saved: {filepath}")
 
-def main():
-    print("Loading data...")
-    try:
-        df_bin, df_reg = load_data('experiment_results.json')
-    except FileNotFoundError:
-        print("experiment_results.json not found. Place it in the exact directory.")
+
+def process_split_set(df_bin, df_reg, output_subdir, bin_splits, reg_splits, split_titles):
+    """Helper to generate and save Binary, Regression, and Spectral tables for a set of splits."""
+    
+    # 1. Check if the required splits actually exist in the loaded data
+    missing_bin = [s for s in bin_splits if s not in df_bin['Block_Split'].unique()] if not df_bin.empty else []
+    missing_reg = [s for s in reg_splits if s not in df_reg['Block_Split'].unique()] if not df_reg.empty else []
+    
+    # If the dataframe isn't empty but is missing required splits, we skip generation
+    if (not df_bin.empty and missing_bin) or (not df_reg.empty and missing_reg):
+        missing_all = set(missing_bin + missing_reg)
+        print(f"\nSkipping '{output_subdir}': missing required splits {list(missing_all)} in the data.")
+        return
+        
+    if df_bin.empty and df_reg.empty:
+        print(f"\nSkipping '{output_subdir}': no data available.")
         return
 
-    # 1. BINARY SPECIFICATIONS 
+    # 2. Proceed with generation if checks pass
+    out_dir = os.path.join(TEX_DIR, output_subdir)
+    print(f"\n--- Generating tables for target directory: '{out_dir}' ---")
+
+    # [Binary Table Generation]
     bin_cols = [
         ('F1', True, 1.0, True),
         ('Precision', True, 1.0, True),
@@ -240,9 +254,21 @@ def main():
         "\\textbf{Model} & \\textbf{F1} $\\uparrow$ & \\textbf{Precision} $\\uparrow$ & \\textbf{Recall} $\\uparrow$ & \\textbf{Accuracy} $\\uparrow$ \\\\",
         "\\midrule"
     ]
-    bin_splits = ["none", "test"]
+    bin_table = generate_combined_latex_table(
+        df_bin, "TMQM_SPECTO_BINARY", bin_splits, split_titles, 
+        "Binary classification metrics on tmQMg*.", 
+        bin_cols, bin_header
+    )
+    save_table(bin_table, out_dir, "binary_metrics.tex")
 
-    # 3. SPECTRAL SPECIFICATIONS 
+    # [Regression Table Generation]
+    reg_table = generate_stacked_regression_table(
+        df_reg, reg_splits, split_titles, 
+        "Regression metrics for 10 eV and $\\log_{10}(f)$ targets on tmQMg*."
+    )
+    save_table(reg_table, out_dir, "regression_metrics.tex")
+
+    # [Spectral Table Generation]
     spec_cols = [
         ('metric_jsd', False, 1.0, True),
         ('metric_wasserstein', False, 1.0, True),
@@ -257,35 +283,44 @@ def main():
         "\\textbf{Model} & \\textbf{JSD} $\\downarrow$ & \\textbf{Wasserstein} $\\downarrow$ & \\textbf{SID} $\\downarrow$ & \\textbf{STMSE} $\\downarrow$ & \\textbf{SMSE} ($\\times 10^{-7}$) $\\downarrow$ & \\textbf{SRMSE} ($\\times 10^{-4}$) $\\downarrow$ \\\\",
         "\\midrule"
     ]
-    spectral_splits = ["null", "test"]
-    split_titles = ["(a) Train \\& Test: Block 3", "(b) Test Only: Block 3"]
-
-    print("\nGenerating and saving 3 combined tables...")
-
-    # 1. Binary Table
-    bin_table = generate_combined_latex_table(
-        df_bin, "TMQM_SPECTO_BINARY", bin_splits, split_titles, 
-        "Binary classification metrics on tmQMg*.", 
-        bin_cols, bin_header
-    )
-    save_table(bin_table, "binary_metrics.tex")
-
-    # 2. Regression Table (Stacked)
-    reg_table = generate_stacked_regression_table(
-        df_reg, spectral_splits, split_titles, 
-        "Regression metrics for 10 eV and $\\log_{10}(f)$ targets on tmQMg*."
-    )
-    save_table(reg_table, "regression_metrics.tex")
-
-    # 3. Spectral Table
     spec_table = generate_combined_latex_table(
-        df_reg, "TMQM_SPECTO_SPECTRAL", spectral_splits, split_titles, 
+        df_reg, "TMQM_SPECTO_SPECTRAL", reg_splits, split_titles, 
         "Spectral reconstruction metrics on tmQMg*.", 
         spec_cols, spec_header
     )
-    save_table(spec_table, "spectral_metrics.tex")
+    save_table(spec_table, out_dir, "spectral_metrics.tex")
 
-    print("\nComplete! Processed all 3 combined structural files into 'TEX_DIR'.")
+def main():
+    print("Loading data...")
+    try:
+        df_bin, df_reg = load_data('experiment_results.json')
+    except FileNotFoundError:
+        print("experiment_results.json not found. Place it in the exact directory.")
+        return
+
+    split_titles = ["(a) Train \\& Test: Block 3", "(b) Test Only: Block 3"]
+
+    # 1. First Set: none/null vs test -> TEX_DIR/block-3_none-test
+    process_split_set(
+        df_bin, df_reg,
+        output_subdir="block-3_none-test",
+        bin_splits=["none", "test"],
+        reg_splits=["null", "test"],
+        split_titles=split_titles
+    )
+
+    split_titles = ["(a) Train \\& Test: Blocks 3, 4, 5", "(b) Test: Block 3"]
+
+    # 2. Second Set: 345 vs 3test -> TEX_DIR/block-3_345-3test
+    process_split_set(
+        df_bin, df_reg,
+        output_subdir="block-3_345-3test",
+        bin_splits=["345", "3test"],
+        reg_splits=["345", "3test"],
+        split_titles=split_titles
+    )
+
+    print("\nComplete! Processed all tables into their respective directories.")
 
 if __name__ == "__main__":
     main()
