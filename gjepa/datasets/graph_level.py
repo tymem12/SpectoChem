@@ -128,14 +128,11 @@ class GraphLevelDataModule(GraphDataModule):
             additional_loading_params = self.config.additional_loading_params
 
             old_b3 = additional_loading_params.get('block_3_only', 'missing')
-            old_mark = additional_loading_params.get('mark_block_3', 'missing')
 
             print(f"Notice: `config.block_3_split_mode` is {block_3_split_mode!r}. "
-                  f"Overwriting additional_loading_params: `block_3_only` ({old_b3!r} -> False), "
-                  f"`mark_block_3` ({old_mark!r} -> True).")
+                  f"Overwriting additional_loading_params: `block_3_only` ({old_b3!r} -> False).")
 
             additional_loading_params['block_3_only'] = False
-            additional_loading_params['mark_block_3'] = True
 
         dataset = load_graph(
             root_dir=self.config.root_dir,
