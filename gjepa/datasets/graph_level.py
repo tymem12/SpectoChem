@@ -76,6 +76,14 @@ class GraphLevelDataModule(GraphDataModule):
         self.generator.manual_seed(self.random_seed)
         return self.generator
 
+    @property
+    def is_binary_task(self) -> bool:
+        return self.config.task_type == "binary"
+
+    def _get_block_3_test_csds_path(self) -> Path:
+        subfolder = "binary_stratified" if self.is_binary_task else "regression_non_stratified"
+        return Path(self.config.root_dir) / "raw" / "block_3d_test_per_seed" / subfolder / f"{self.random_seed}.txt"
+
     def setup(self, stage: str) -> None:
         # torch trainer calls `setup()` again with `stage="fit` during testing, which causes setting
         # train, val, test ds again - with a different split - which means a very possible data leak
@@ -89,7 +97,7 @@ class GraphLevelDataModule(GraphDataModule):
         should_split = name != ZINC.__name__
 
         block_3_split_mode = self.config.block_3_split_mode
-        is_binary_task = self.config.task_type == "binary"
+        is_binary_task = self.is_binary_task
 
         if should_split:
             if split_ratios is None:
@@ -303,9 +311,8 @@ class GraphLevelDataModule(GraphDataModule):
                                 content = "\n".join(map(str, b3_test_csds))
 
                                 # Route to different folders based on stratification
-                                subfolder = "binary_stratified" if is_binary_task else "regression_non_stratified"
-                                save_path = Path(self.config.root_dir) / "raw" / "block_3d_test_per_seed" / subfolder / f"{self.random_seed}.txt"
-                                
+                                save_path = self._get_block_3_test_csds_path()
+
                                 save_path.parent.mkdir(parents=True, exist_ok=True)
 
                                 if save_path.exists():
@@ -352,6 +359,28 @@ class GraphLevelDataModule(GraphDataModule):
                         self.train_ds = Subset(dataset, train_idx)
                         self.val_ds   = Subset(dataset, val_idx)
                         self.test_ds  = Subset(dataset, test_idx)
+                    case "3test":
+                        save_path = self._get_block_3_test_csds_path()
+                        if not save_path.exists():
+                            raise FileNotFoundError(
+                                f"Block 3 test CSDs file not found at {save_path}. "
+                                f"You must run with `block_3_split_mode='345'` first to generate it."
+                            )
+                        
+                        valid_csds = set(save_path.read_text().strip().splitlines())
+                        
+                        test_idx = []
+                        # Only look within the dataset indices that belong to Block 3
+                        for i in block_3_indices:
+                            if str(dataset[i].CSD_code) in valid_csds:
+                                test_idx.append(i)
+                        
+                        if len(test_idx) != len(valid_csds):
+                            print(f"Warning: Found {len(test_idx)} molecules matching the {len(valid_csds)} expected test CSDs.")
+
+                        self.train_ds = Subset(dataset, [])
+                        self.val_ds = Subset(dataset, [])
+                        self.test_ds = Subset(dataset, test_idx)
                     case _:
                         raise ValueError(f"Invalid `block_3_split_mode` {block_3_split_mode}")
 
@@ -398,9 +427,9 @@ class GraphLevelDataModule(GraphDataModule):
             test_ds_len = len(self.test_ds)
 
 
-            train_iso_pct = (train_iso_count / train_ds_len * 100)
-            val_iso_pct = (val_iso_count / val_ds_len * 100)
-            test_iso_pct = (test_iso_count / test_ds_len * 100)
+            train_iso_pct = (train_iso_count / train_ds_len * 100) if train_ds_len > 0 else 0.0
+            val_iso_pct = (val_iso_count / val_ds_len * 100) if val_ds_len > 0 else 0.0
+            test_iso_pct = (test_iso_count / test_ds_len * 100) if test_ds_len > 0 else 0.0
 
             print(f"Unique isomers: train: {train_iso_count} ({train_iso_pct:.2f}%) | "
                   f"val: {val_iso_count} ({val_iso_pct:.2f}%) | "
@@ -409,27 +438,29 @@ class GraphLevelDataModule(GraphDataModule):
         print("Test ds first entry:", self.test_ds[0].y)
 
         # -- Atom leakage test
-        def _get_atoms(ds): 
-            return set().union(*(d.z.tolist() for d in ds))
-        
-        train_atoms = _get_atoms(self.train_ds)
-        val_atoms = _get_atoms(self.val_ds)
-        test_atoms = _get_atoms(self.test_ds)
-        
-        missing_atoms = (val_atoms | test_atoms) - train_atoms
-        if missing_atoms:
-            bad_atom = next(iter(missing_atoms))
-            # Find the offending molecule in val or test
-            bad_d = next(d for ds in (self.val_ds, self.test_ds) for d in ds if bad_atom in d.z.tolist())
+        if len(self.train_ds) > 0:
+            def _get_atoms(ds): 
+                return set().union(*(d.z.tolist() for d in ds))
             
-            raise ValueError(
-                f"Atom {bad_atom} is present in val/test but missing from the training set!\n"
-                f"Molecule CSD: {bad_d.CSD_code} | SMILES: {bad_d.smiles}\n"
-                f"Train atoms: {sorted(train_atoms)}\n"
-                f"Val atoms:   {sorted(val_atoms)}\n"
-                f"Test atoms:  {sorted(test_atoms)}"
-            )
-        
+            train_atoms = _get_atoms(self.train_ds)
+            val_atoms = _get_atoms(self.val_ds)
+            test_atoms = _get_atoms(self.test_ds)
+            
+            missing_atoms = (val_atoms | test_atoms) - train_atoms
+            if missing_atoms:
+                bad_atom = next(iter(missing_atoms))
+                # Find the offending molecule in val or test
+                bad_d = next(d for ds in (self.val_ds, self.test_ds) for d in ds if bad_atom in d.z.tolist())
+                
+                raise ValueError(
+                    f"Atom {bad_atom} is present in val/test but missing from the training set!\n"
+                    f"Molecule CSD: {bad_d.CSD_code} | SMILES: {bad_d.smiles}\n"
+                    f"Train atoms: {sorted(train_atoms)}\n"
+                    f"Val atoms:   {sorted(val_atoms)}\n"
+                    f"Test atoms:  {sorted(test_atoms)}"
+                )
+        else:
+            print("Skipping atom leakage check because train_ds is empty.")
         # --- ATOM LEAKAGE CHECK END ---
 
         self._standarize_output(output_type=self.config.additional_loading_params['prediction_type'],
@@ -504,11 +535,15 @@ class GraphLevelDataModule(GraphDataModule):
                     print(f"  > {b}d: {cnt} ({pct:.2f}%)")
 
     def _get_dataloader(self, dataset: Subset, **kwargs) -> DataLoader:
-        return DataLoader(dataset, batch_size=self.batch_size, drop_last=True, **kwargs)
+        kwargs.setdefault(
+            "drop_last", False
+        )
+
+        return DataLoader(dataset, batch_size=self.batch_size, **kwargs)
 
     def train_dataloader(self) -> DataLoader:
         assert self.train_ds is not None
-        return self._get_dataloader(self.train_ds, shuffle=True)
+        return self._get_dataloader(self.train_ds, drop_last=True, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
         assert self.val_ds is not None
