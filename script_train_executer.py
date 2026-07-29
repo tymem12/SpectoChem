@@ -240,7 +240,7 @@ def main():
         "--block_3_split",
         type=str,
         required=True,
-        choices=["test", "345", "none"],
+        choices=["test", "345", "3test", "none"],
     )
     # Use BooleanOptionalAction to automatically support --outliers and --no-outliers
     
