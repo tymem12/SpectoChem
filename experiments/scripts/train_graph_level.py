@@ -152,7 +152,8 @@ def main(cfg: DictConfig) -> None:
                 epoch = int(epoch_match.group(1)) if epoch_match else -1
                     
                 # Extract validation metric
-                metric_match = re.search(r'val_([a-zA-Z0-9_]+)=([0-9\.e\-]+)\.ckpt', p.name)
+                metric_match = re.search(r'val_([a-zA-Z0-9_]+)=([0-9\.e\-]+?)(?:-v\d+)?\.ckpt', p.name)
+                
                 if not metric_match:
                     raise ValueError(
                         f"Could not parse a 'val_...=...' metric from checkpoint filename: '{p.name}'. "
