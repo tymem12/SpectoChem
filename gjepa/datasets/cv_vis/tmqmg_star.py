@@ -17,7 +17,7 @@ class TMQMGStarDataset(InMemoryDataset):
         root: str,
         filter_type,
         block_3_only: bool = False,
-        mark_block_3: bool = False,
+        mark_block_3: bool = True,
         y_columns: Optional[Sequence[str]] = None,
         extra_fields: Optional[Sequence[str]] = None,
         transform=None,
