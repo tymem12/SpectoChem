@@ -90,16 +90,17 @@ def main(cfg: DictConfig) -> None:
         # If we trained, we just use the standard "best" string for testing
         test_ckpt_path = "best"
     else:
+        import re
+        import shutil
+        
         train_duration_sec = 0.0
         train_epochs = 0
         
         exp_dir = str(config.training.experiment_dir)
-
         split_mode_345 = "345"
 
         # If in '3test' mode, fetch the checkpoint from the '345' folder
         if split_mode == "3test":
-            # Dynamically construct the strings based on the format
             block_3_format = "block_3_{split_mode}"
             expected_substring = block_3_format.format(split_mode=split_mode)
             target_substring = block_3_format.format(split_mode=split_mode_345)
@@ -113,20 +114,84 @@ def main(cfg: DictConfig) -> None:
             search_dir = Path(exp_dir.replace(expected_substring, target_substring))
             print(f"Looking for {split_mode_345!r} checkpoint in: {search_dir}")
         else:
-            # If ONLY_TEST was manually set for a normal run, look in current dir
             search_dir = Path(exp_dir)
             print(f"Looking for checkpoint in: {search_dir}")
         
-        ckpt_paths = list(search_dir.rglob("epoch=*.ckpt"))
-        if not ckpt_paths:
-            raise FileNotFoundError(
-                f"Could not find any checkpoint matching 'epoch=*.ckpt' in {search_dir}. "
-                f"Did you train the model first?"
-            )
+        # 1. Check if "best.ckpt" already exists to avoid redundant searching
+        existing_best = list(search_dir.rglob("best.ckpt"))
+        if existing_best:
+            # If multiple exist, take the most recently modified one
+            best_ckpt = max(existing_best, key=lambda p: p.stat().st_mtime)
+            test_ckpt_path = str(best_ckpt)
+            print(f"Found existing 'best.ckpt'! Skipping search and using: {test_ckpt_path}")
         
-        # Get the most recently modified checkpoint
-        test_ckpt_path = str(max(ckpt_paths, key=lambda p: p.stat().st_mtime))
-        print(f"Found checkpoint! Will test using: {test_ckpt_path}")
+        # 2. If no "best.ckpt", search for standard PyTorch Lightning epoch checkpoints
+        else:
+            ckpt_paths = list(search_dir.rglob("epoch=*.ckpt"))
+            if not ckpt_paths:
+                raise FileNotFoundError(
+                    f"Could not find any checkpoint matching 'epoch=*.ckpt' or 'best.ckpt' in {search_dir}. "
+                    f"Did you train the model first?"
+                )
+            
+            print(f"\nFound {len(ckpt_paths)} checkpoints:")
+            for p in ckpt_paths:
+                print(f"  - {p.name}")
+            
+            # Hardcoded metric rules
+            higher_is_better_metrics = ["AUROC", "F1", "ACC", "ACCURACY", "PRECISION", "RECALL", "R2", "R_SQUARED"]
+            lower_is_better_metrics = ["MAE", "MSE", "RMSE", "LOSS", "JSD", "WASSERSTEIN", "SID", "STMSE", "SMSE", "SRMSE", "RAW_MAE", "L1", "L2"]
+            
+            def get_checkpoint_score(p: Path):
+                """
+                Extracts the score for sorting. 
+                Raises an error if the metric is unparseable or unknown.
+                """
+                # Extract epoch
+                epoch_match = re.search(r'epoch=(\d+)', p.name)
+                epoch = int(epoch_match.group(1)) if epoch_match else -1
+                    
+                # Extract validation metric
+                metric_match = re.search(r'val_([a-zA-Z0-9_]+)=([0-9\.e\-]+)', p.name)
+                if not metric_match:
+                    raise ValueError(
+                        f"Could not parse a 'val_...=...' metric from checkpoint filename: '{p.name}'. "
+                        "Ensure your ModelCheckpoint callback includes the validation metric in the filename."
+                    )
+                    
+                metric_name = metric_match.group(1).upper()
+                metric_val = float(metric_match.group(2))
+                
+                is_higher = any(m in metric_name for m in higher_is_better_metrics)
+                is_lower = any(m in metric_name for m in lower_is_better_metrics)
+                
+                if not is_higher and not is_lower:
+                    raise ValueError(
+                        f"Unknown validation metric '{metric_name}' in checkpoint '{p.name}'. "
+                        "It is not defined in either 'higher_is_better_metrics' or 'lower_is_better_metrics'. "
+                        "Please update the hardcoded lists."
+                    )
+                
+                if is_higher:
+                    score = metric_val
+                else:
+                    # Negate so max() picks the smallest error
+                    score = -metric_val
+                    
+                # Sort order: 1st by validation score, 2nd by highest epoch, 3rd by most recent
+                return (score, epoch, p.stat().st_mtime)
+
+            # Let python's max() find the absolute best checkpoint using our logic
+            best_ckpt = max(ckpt_paths, key=get_checkpoint_score)
+            
+            print(f"\n=> Selected best checkpoint: {best_ckpt.name}")
+            
+            # Save it as "best.ckpt" alongside the original
+            best_save_path = best_ckpt.parent / "best.ckpt"
+            print(f"=> Saving a copy as: {best_save_path}\n")
+            shutil.copy2(best_ckpt, best_save_path)
+            
+            test_ckpt_path = str(best_save_path)
 
         datamodule.setup(stage="fit")
 
