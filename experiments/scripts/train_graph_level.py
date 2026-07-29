@@ -128,6 +128,8 @@ def main(cfg: DictConfig) -> None:
         test_ckpt_path = str(max(ckpt_paths, key=lambda p: p.stat().st_mtime))
         print(f"Found checkpoint! Will test using: {test_ckpt_path}")
 
+        datamodule.setup(stage="fit")
+
     # --- TESTING ---
     seed_everything(config.training.random_seed, workers=True)
     
