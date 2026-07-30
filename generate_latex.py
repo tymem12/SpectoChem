@@ -159,8 +159,13 @@ def generate_stacked_regression_table(df, split_keys, split_titles, main_caption
             if not df_sub.empty:
                 df_sub['Model'] = df_sub['Model'].str.lower().map(MODEL_MAP)
                 df_sub = df_sub.dropna(subset=['Model'])
-                agg = df_sub.groupby('Model')[numeric_cols].agg(['mean', 'std'])
                 
+                # Step 1: Average across States for each Seed
+                seed_means = df_sub.groupby(['Model', 'Seed'])[numeric_cols].mean().reset_index()
+                
+                # Step 2: Calculate Mean and Std across the Seeds
+                agg = seed_means.groupby('Model')[numeric_cols].agg(['mean', 'std'])
+
                 for col, higher_is_better, _, do_rank in columns_spec:
                     if not do_rank or col not in agg.columns: continue
                     means = agg[col]['mean'].dropna()
@@ -169,7 +174,7 @@ def generate_stacked_regression_table(df, split_keys, split_titles, main_caption
                     best = unique_means[0] if len(unique_means) > 0 else None
                     second = unique_means[1] if len(unique_means) > 1 else None
                     best_vals[col] = (best, second)
-
+                
             for m_idx, model in enumerate(MODELS):
                 row = []
                 row.append(t_label if m_idx == 0 else "")
