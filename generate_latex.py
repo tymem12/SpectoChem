@@ -101,7 +101,9 @@ def generate_combined_latex_table(df, dataset_filter, split_keys, split_titles, 
             "}" 
         ])
         
-        if idx == 0: lines.append("\\vspace{0.4cm}")
+        # FIX: apply space between all subtables, not just after the first one
+        if idx < len(split_keys) - 1: 
+            lines.append("\\vspace{0.4cm}")
             
     lines.extend([
         "\\begin{tablenotes}",
@@ -198,7 +200,9 @@ def generate_stacked_regression_table(df, split_keys, split_titles, main_caption
             "}" 
         ])
         
-        if idx == 0: lines.append("\\vspace{0.4cm}")
+        # FIX: apply space between all subtables, not just after the first one
+        if idx < len(split_keys) - 1: 
+            lines.append("\\vspace{0.4cm}")
             
     lines.extend([
         "\\begin{tablenotes}",
@@ -298,29 +302,26 @@ def main():
         print("experiment_results.json not found. Place it in the exact directory.")
         return
 
-    split_titles = ["(a) Train \\& Test: Block 3", "(b) Test Only: Block 3"]
+    # Define the 3 sets of splits and their sub-titles
+    split_titles = [
+        "(a) Train \\& Test: Blocks 3, 4, 5",
+        "(b) Test: Block 3",
+        "(c) Train \\& Test: Block 3"
+    ]
+    
+    bin_splits = ["345", "3test", "none"]
+    reg_splits = ["345", "3test", "null"]
 
-    # 1. First Set: none/null vs test -> TEX_DIR/block-3_none-test
+    # Generate a single combined set of tables
     process_split_set(
         df_bin, df_reg,
-        output_subdir="block-3_none-test",
-        bin_splits=["none", "test"],
-        reg_splits=["null", "test"],
+        output_subdir="combined_3_splits",
+        bin_splits=bin_splits,
+        reg_splits=reg_splits,
         split_titles=split_titles
     )
 
-    split_titles = ["(a) Train \\& Test: Blocks 3, 4, 5", "(b) Test: Block 3"]
-
-    # 2. Second Set: 345 vs 3test -> TEX_DIR/block-3_345-3test
-    process_split_set(
-        df_bin, df_reg,
-        output_subdir="block-3_345-3test",
-        bin_splits=["345", "3test"],
-        reg_splits=["345", "3test"],
-        split_titles=split_titles
-    )
-
-    print("\nComplete! Processed all tables into their respective directories.")
+    print("\nComplete! Processed all tables into the target directory.")
 
 if __name__ == "__main__":
     main()

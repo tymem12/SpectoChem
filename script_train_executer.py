@@ -46,11 +46,11 @@ def run_cmd(cmd, log_info):
 
 def run_binary(model_name, seed, block_3_split):
     block_3_only = block_3_split == "none"
-    if block_3_split == "none":
-        block_3_split_str = "null"
-        block_3_split = block_3_split_str
+    block_3_split_str = block_3_split
+
+    if block_3_only:
+        block_3_split = "null"
     else:
-        block_3_split_str = block_3_split
         block_3_split = repr(block_3_split)
 
     for min_f_value in [0.01]:

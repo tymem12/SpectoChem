@@ -29,8 +29,8 @@ from gjepa.utils import spectral_loss
 SEEDS = [2137, 42, 1234]
 BASE_MODELS = ["schnet", "gine", "gat", "gcn"]
 MODELS = BASE_MODELS + ["dummy"]
-BLOCK_SPLITS_BINARY = ["none", "test"]
-BLOCK_SPLITS_REGRESSION = ["null", "test"]
+BLOCK_SPLITS_BINARY = ["none", "345", "3test"]
+BLOCK_SPLITS_REGRESSION = ["null", "345", "3test"]
 
 BASE_DIR = Path("data/experiments/supervised")
 
