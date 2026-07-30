@@ -104,10 +104,7 @@ def create_dummy_baseline(ref_dir: Path):
     )
     datamodule.setup(stage="fit")
 
-    y_train, _ = get_targets_and_ids(datamodule.train_dataloader())
-    y_val, _ = get_targets_and_ids(datamodule.val_dataloader())
-
-    if config.dataset.block_3_split_mode == "3test" and len(y_train) == 0:
+    if config.dataset.block_3_split_mode == "3test":
         import copy
         print(f"  -> '3test' split detected with empty train set. Fetching train distribution from '345'...")
         train_config = copy.deepcopy(config)
@@ -124,6 +121,9 @@ def create_dummy_baseline(ref_dir: Path):
         
         y_train, _ = get_targets_and_ids(train_dm.train_dataloader())
         y_val, _ = get_targets_and_ids(train_dm.val_dataloader())
+    else:
+        y_train, _ = get_targets_and_ids(datamodule.train_dataloader())
+        y_val, _ = get_targets_and_ids(datamodule.val_dataloader())
 
     y_test, test_ids = get_targets_and_ids(datamodule.test_dataloader())
     y_total = np.concatenate([y_train, y_val, y_test])

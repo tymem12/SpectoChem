@@ -17,7 +17,6 @@ class TMQMGStarDataset(InMemoryDataset):
         root: str,
         filter_type,
         block_3_only: bool = False,
-        mark_block_3: bool = True,
         y_columns: Optional[Sequence[str]] = None,
         extra_fields: Optional[Sequence[str]] = None,
         transform=None,
@@ -62,7 +61,6 @@ class TMQMGStarDataset(InMemoryDataset):
         self.standarize_f = standarize_f
         self.lambda_bucket_size = lambda_bucket_size
         self.load_representations = load_representations
-        self.mark_block_3 = mark_block_3
         self.lambda_outlier_threshold = lambda_outlier_threshold
         self.f_outlier_threshold = f_outlier_threshold
         self.outlier_strategy = outlier_strategy
@@ -137,7 +135,6 @@ class TMQMGStarDataset(InMemoryDataset):
             f"filter_f_value-{self.filter_f_value}_"
             f"lambda_bucket_size-{self.lambda_bucket_size}_"
             f"f_as_log10-{self.f_as_log10}_"
-            f"mark-block3-{self.mark_block_3}_"
             f"outlier_str-{self.outlier_strategy}_"
             f"lambda_outlier_thr-{self.lambda_outlier_threshold}_"
             f"f_outlier_thr-{self.f_outlier_threshold}_"

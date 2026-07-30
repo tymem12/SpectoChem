@@ -821,8 +821,11 @@ class GraphLevelDataModule(GraphDataModule):
                 StandarizerSingletonLambda.set_values(mean_lambda=val_mean, std_lambda=val_std)
             return
         if output_type in ["binary_classification",'binary_vector_multiclass', 'binary_vector_multilabel']:
-            print('SHAPE: ', self.train_ds[0].y.shape)
-            print('VALUES: ', self.train_ds[0].y)
+            if len(self.train_ds):
+                print('SHAPE: ', self.train_ds[0].y.shape)
+                print('VALUES: ', self.train_ds[0].y)
+            else:
+                print("Empty training dataset")
             return
         else:
             raise ValueError(f"Unknown standarization type: {type!r}. Expected 'pairs', 'vector', or 'only_lambdas'.")
