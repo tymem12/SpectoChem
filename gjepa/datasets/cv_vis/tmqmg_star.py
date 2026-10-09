@@ -17,7 +17,6 @@ class TMQMGStarDataset(InMemoryDataset):
         root: str,
         filter_type,
         block_3_only: bool = False,
-        mark_block_3: bool = False,
         y_columns: Optional[Sequence[str]] = None,
         extra_fields: Optional[Sequence[str]] = None,
         transform=None,
@@ -62,7 +61,6 @@ class TMQMGStarDataset(InMemoryDataset):
         self.standarize_f = standarize_f
         self.lambda_bucket_size = lambda_bucket_size
         self.load_representations = load_representations
-        self.mark_block_3 = mark_block_3
         self.lambda_outlier_threshold = lambda_outlier_threshold
         self.f_outlier_threshold = f_outlier_threshold
         self.outlier_strategy = outlier_strategy
@@ -71,7 +69,7 @@ class TMQMGStarDataset(InMemoryDataset):
 
         if self.prediction_type not in {"pairs", "vector", 'only_lambdas', 'binary_classification',
                                         'binary_vector_multiclass', 'binary_vector_multilabel',
-                                        'lambda_regressor', 'f_regressor'}:
+                                        'lambda_regressor', 'f_regressor', 'multi_regressor'}:
             raise ValueError(f"Invalid prediction_type: {self.prediction_type}")
 
         
@@ -137,7 +135,6 @@ class TMQMGStarDataset(InMemoryDataset):
             f"filter_f_value-{self.filter_f_value}_"
             f"lambda_bucket_size-{self.lambda_bucket_size}_"
             f"f_as_log10-{self.f_as_log10}_"
-            f"mark-block3-{self.mark_block_3}_"
             f"outlier_str-{self.outlier_strategy}_"
             f"lambda_outlier_thr-{self.lambda_outlier_threshold}_"
             f"f_outlier_thr-{self.f_outlier_threshold}_"
@@ -155,7 +152,7 @@ class TMQMGStarDataset(InMemoryDataset):
 
     @staticmethod
     def _get_csv_filename(block_3_only) -> str:
-        return "raw/uvvis_final_40k.csv" if block_3_only else "raw/tmqm_all.csv"
+        return "raw/tmc_blocks/3d.csv" if block_3_only else "raw/tmqm_all.csv"
 
     def _csv_filename(self) -> str:
         return self._get_csv_filename(self.block_3_only)
@@ -301,6 +298,16 @@ class TMQMGStarDataset(InMemoryDataset):
         vec.append(f)
         return torch.tensor([vec], dtype=torch.float32)
 
+    def _build_multi_regressor(self, transitions: List[Tuple[float, float]], num_states: int = 10) -> torch.Tensor:
+        lams = []
+        fs = []
+        for i in range(num_states):
+            lam, f = transitions[i]
+            lams.append(lam)
+            fs.append(f)
+        # Returns [1, 20] tensor: first 10 are lambdas, next 10 are f's
+        return torch.tensor([lams + fs], dtype=torch.float32)
+
     def _build_binary(self, transitions: List[Tuple[float, float]], min_f_value: float = 0) -> torch.Tensor:
         pos = 0
         for lam, f in transitions:
@@ -353,9 +360,9 @@ class TMQMGStarDataset(InMemoryDataset):
         return hist.unsqueeze(0)
     
     def _prepare_the_output_format(self, transitions):
-        if not self.prediction_type in {"pairs", "vector", "only_lambdas", "binary_classification",
+        if self.prediction_type not in {"pairs", "vector", 'only_lambdas', 'binary_classification',
                                         'binary_vector_multiclass', 'binary_vector_multilabel',
-                                        'lambda_regressor', 'f_regressor'}:
+                                        'lambda_regressor', 'f_regressor', 'multi_regressor'}:
             raise ValueError('prediction type did not mach: ', " pairs ", " vector ",
                              "only_lambdas", " binary_classification",
                              'lambda_regressor', 'f_regressor')
@@ -380,7 +387,8 @@ class TMQMGStarDataset(InMemoryDataset):
             return self._build_lambda_regressor(transitions, num_pairs=self.num_states)
         elif self.prediction_type == 'f_regressor':
             return self._build_f_regressor(transitions, num_pairs=self.num_states)
-
+        elif self.prediction_type == 'multi_regressor':
+            return self._build_multi_regressor(transitions, self.num_states)
     def remove_outliers(self, transitions):
         if not transitions:
             return []
@@ -407,7 +415,7 @@ class TMQMGStarDataset(InMemoryDataset):
         if not transitions:
             return []
         if self.convert_to_ev and self.prediction_type in {"pairs", 'only_lambdas',
-                                                           'lambda_regressor'}:
+                                                           'lambda_regressor', 'multi_regressor'}:
             ev_trainsitions = [(1239.8419843320026224 / lam, f) for lam, f in transitions]
             return ev_trainsitions
         return transitions
@@ -415,7 +423,7 @@ class TMQMGStarDataset(InMemoryDataset):
     def convert_f_to_log10(self, transitions):
         if not transitions:
             return []
-        if self.f_as_log10 and self.prediction_type in {"pairs", 'f_regressor'}:
+        if self.f_as_log10 and self.prediction_type in {"pairs", 'f_regressor', 'multi_regressor'}:
             def _f_to_log10(f: float):
                 # we could use 1e-8 but then the log10 f distribution has a spike at x=-8 and is completely flat (no data)
                 # for -8 < x < -4; so setting the threshold at 1e-5 we'll get tighter distribution with no gaps
@@ -464,18 +472,33 @@ class TMQMGStarDataset(InMemoryDataset):
             right_on="id"
         )
 
-        if self.mark_block_3:
-            if not self.block_3_only:
-                block_3_csv_path = os.path.join(self.root, self._get_csv_filename(block_3_only=True))
-                if not os.path.exists(block_3_csv_path):
-                    raise FileNotFoundError(f"Block 3 CSV not found for marking: {block_3_csv_path}")
+        tmc_block_path = Path(self.root) / "raw" / "tmc_blocks"
 
-                df_block_3 = pd.read_csv(block_3_csv_path, usecols=["CSD_code"])
-                block_3_codes = set(df_block_3["CSD_code"])
-                df["is_from_block_3"] = df["CSD_code"].isin(block_3_codes)
-            else:
-                df["is_from_block_3"] = True
+        # --- BLOCK IDENTIFICATION & PRE-SPLIT STATS ---
+        tmcs_3d_path = tmc_block_path / "3d.csv"
+        tmcs_4d_path = tmc_block_path / "4d.csv"
+        tmcs_5d_path = tmc_block_path / "5d.csv"
 
+        b3_codes = set(pd.read_csv(tmcs_3d_path, usecols=["CSD_code"])["CSD_code"].astype(str))
+        b4_codes = set(pd.read_csv(tmcs_4d_path, usecols=["CSD_code"])["CSD_code"].astype(str))
+        b5_codes = set(pd.read_csv(tmcs_5d_path, usecols=["CSD_code"])["CSD_code"].astype(str))
+
+        raw_block_counts = {3: 0, 4: 0, 5: 0}
+        for csd in df["CSD_code"].dropna():
+            csd_str = str(csd)
+            if csd_str in b3_codes: raw_block_counts[3] += 1
+            elif csd_str in b4_codes: raw_block_counts[4] += 1
+            elif csd_str in b5_codes: raw_block_counts[5] += 1
+
+        total_raw = len(df)
+        print("\n--- Global Block Statistics (BEFORE Outlier Removal) ---")
+        print(f"Total raw molecules: {total_raw}")
+        for b in [3, 4, 5]:
+            cnt = raw_block_counts[b]
+            pct = (cnt / total_raw * 100) if total_raw > 0 else 0
+            print(f"  Block {b}d: {cnt} ({pct:.2f}%)")
+        print("--------------------------------------------------------\n")
+        
         print(f"Merged dataset: {len(df)} rows (from {len(df_base)} base and {len(df_star)} star)")
 
         required = ["atom_coords", "atom_types", "SMILES", "origin_ID", "CSD_code"]
@@ -503,8 +526,17 @@ class TMQMGStarDataset(InMemoryDataset):
             csd_code = None if pd.isna(row["CSD_code"]) else str(row["CSD_code"])
             kwargs = dict(pos=pos, z=z, smiles=smiles, origin_id=origin_id, CSD_code=csd_code)
 
-            if self.mark_block_3:
-                kwargs["is_from_block_3"] = row["is_from_block_3"]
+            if csd_code in b3_codes:
+                block_id = 3
+            elif csd_code in b4_codes:
+                block_id = 4
+            elif csd_code in b5_codes:
+                block_id = 5
+            else:
+                raise ValueError(f"Invalid block (not any of 3d, 4d, 5d) for molecule: {csd_code!r}")
+
+            kwargs["block_id"] = block_id
+            kwargs["is_from_block_3"] = (block_id == 3)
 
             if self.load_representations:
                 emb = self.precomputed_embedings.get_embedding(csd_code)
@@ -549,7 +581,25 @@ class TMQMGStarDataset(InMemoryDataset):
                 data = self.pre_transform(data)
             data_list.append(data)
 
-        print(f"Positive classes: {pos_classes_counter}, Negative classes: {neg_classes_counter}")
+        total_classes = pos_classes_counter + neg_classes_counter
+        pos_pct = (pos_classes_counter / total_classes * 100) if total_classes > 0 else 0
+        neg_pct = (neg_classes_counter / total_classes * 100) if total_classes > 0 else 0
+        print(f"Positive classes: {pos_classes_counter} ({pos_pct:.2f}%), Negative classes: {neg_classes_counter} ({neg_pct:.2f}%)")
+
+        filtered_block_counts = {3: 0, 4: 0, 5: 0}
+        for d in data_list:
+            b_id = d.block_id
+            filtered_block_counts[b_id] += 1
+
+        total_filtered = len(data_list)
+        print("\n--- Global Block Statistics (AFTER Outlier Removal) ---")
+        print(f"Total filtered molecules: {total_filtered}")
+        for b in [3, 4, 5]:
+            cnt = filtered_block_counts[b]
+            pct = (cnt / total_filtered * 100) if total_filtered > 0 else 0
+            print(f"  Block {b}d: {cnt} ({pct:.2f}%)")
+        print("-------------------------------------------------------\n")
+
         if not data_list:
             raise RuntimeError("No valid molecules processed.")
 

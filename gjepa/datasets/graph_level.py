@@ -76,6 +76,14 @@ class GraphLevelDataModule(GraphDataModule):
         self.generator.manual_seed(self.random_seed)
         return self.generator
 
+    @property
+    def is_binary_task(self) -> bool:
+        return self.config.task_type == "binary"
+
+    def _get_block_3_test_csds_path(self) -> Path:
+        subfolder = "binary_stratified" if self.is_binary_task else "regression_non_stratified"
+        return Path(self.config.root_dir) / "raw" / "block_3d_test_per_seed" / subfolder / f"{self.random_seed}.txt"
+
     def setup(self, stage: str) -> None:
         # torch trainer calls `setup()` again with `stage="fit` during testing, which causes setting
         # train, val, test ds again - with a different split - which means a very possible data leak
@@ -89,7 +97,7 @@ class GraphLevelDataModule(GraphDataModule):
         should_split = name != ZINC.__name__
 
         block_3_split_mode = self.config.block_3_split_mode
-        is_binary_task = self.config.task_type == "binary"
+        is_binary_task = self.is_binary_task
 
         if should_split:
             if split_ratios is None:
@@ -120,14 +128,11 @@ class GraphLevelDataModule(GraphDataModule):
             additional_loading_params = self.config.additional_loading_params
 
             old_b3 = additional_loading_params.get('block_3_only', 'missing')
-            old_mark = additional_loading_params.get('mark_block_3', 'missing')
 
             print(f"Notice: `config.block_3_split_mode` is {block_3_split_mode!r}. "
-                  f"Overwriting additional_loading_params: `block_3_only` ({old_b3!r} -> False), "
-                  f"`mark_block_3` ({old_mark!r} -> True).")
+                  f"Overwriting additional_loading_params: `block_3_only` ({old_b3!r} -> False).")
 
             additional_loading_params['block_3_only'] = False
-            additional_loading_params['mark_block_3'] = True
 
         dataset = load_graph(
             root_dir=self.config.root_dir,
@@ -237,28 +242,164 @@ class GraphLevelDataModule(GraphDataModule):
                         train_val_pool, test_pool = block_3_subset, non_block_3_subset
                     case "test":
                         train_val_pool, test_pool = non_block_3_subset, block_3_subset
+                    case "345":
+                        # Helper to split any dataset pool using isomer or binary stratification logic
+                        def _split_sub_pool(sub_ds):
+                            if self.config.group_by_isomers:
+                                tr_r, v_r = split_ratios[0], split_ratios[1]
+                                norm_tr_r = tr_r / (tr_r + v_r)
+                                tv_ds, t_ds = _isomer_group_split(sub_ds, tr_r + v_r, stratify=is_binary_task)
+                                tr_ds, v_ds = _isomer_group_split(tv_ds, norm_tr_r, stratify=is_binary_task)
+                                
+                                # Resolve nested indices from the two-step split
+                                tr_idx = [tv_ds.indices[i] for i in tr_ds.indices]
+                                val_idx = [tv_ds.indices[i] for i in v_ds.indices]
+                                return tr_idx, val_idx, t_ds.indices
+                            else:
+                                if is_binary_task:
+                                    tr_r, v_r = split_ratios[0], split_ratios[1]
+                                    test_r = 1.0 - tr_r - v_r
+                                    norm_tr_r = tr_r / (tr_r + v_r)
+                                    labels = [_get_binary_label(d) for d in sub_ds]
+                                    indices = list(range(len(sub_ds)))
+                                    
+                                    tv_idx, test_idx, tv_labels, _ = train_test_split(
+                                        indices, labels, test_size=test_r, stratify=labels, random_state=self.random_seed
+                                    )
+                                    tr_idx_nested, val_idx_nested = train_test_split(
+                                        tv_idx, train_size=norm_tr_r, stratify=tv_labels, random_state=self.random_seed
+                                    )
+                                    
+                                    # Resolve nested indices
+                                    tr_idx = [tv_idx[i] for i in tr_idx_nested]
+                                    val_idx = [tv_idx[i] for i in val_idx_nested]
+                                    return tr_idx, val_idx, test_idx
+                                else:
+                                    tr_ds, v_ds, t_ds = split_dataset(sub_ds, split_ratios, self.reseed_generator())
+                                    return tr_ds.indices, v_ds.indices, t_ds.indices
+
+                        # Group overall dataset indices per block
+                        block_indices = {3: [], 4: [], 5: []}
+                        for i, d in enumerate(dataset):
+                            b_id = int(d.block_id.view(-1)[0].item())
+                            block_indices[b_id].append(i)
+
+                        train_idx, val_idx, test_idx = [], [], []
+
+                        # Split each block independently with same random state
+                        for b_id in [3, 4, 5]:
+                            idxs = block_indices[b_id]
+                            if not idxs:
+                                continue
+                            b_ds = Subset(dataset, idxs)
+                            
+                            # Receive flat indices relative to b_ds
+                            b_tr_idx, b_val_idx, b_test_idx = _split_sub_pool(b_ds)
+
+                            # Map back to absolute dataset indices
+                            train_idx.extend([idxs[i] for i in b_tr_idx])
+                            val_idx.extend([idxs[i] for i in b_val_idx])
+                            test_idx.extend([idxs[i] for i in b_test_idx])
+
+                            if b_id == 3:
+                                # Save or verify Block 3 test CSD codes
+                                b3_test_csds = [dataset[idxs[i]].CSD_code for i in b_test_idx]
+                                content = "\n".join(map(str, b3_test_csds))
+
+                                # Route to different folders based on stratification
+                                save_path = self._get_block_3_test_csds_path()
+
+                                save_path.parent.mkdir(parents=True, exist_ok=True)
+
+                                if save_path.exists():
+                                    existing_content = save_path.read_text().strip()
+                                    current_content = content.strip()
+                                    
+                                    if existing_content != current_content:
+                                        expected_csds = existing_content.splitlines() if existing_content else []
+                                        found_csds = [str(c) for c in b3_test_csds]
+                                        
+                                        expected_set = set(expected_csds)
+                                        found_set = set(found_csds)
+                                        
+                                        # Check if the contents are the same but the order changed
+                                        if expected_set == found_set:
+                                            mismatches = [
+                                                f"Pos {idx}: Expected {e}, got {f}" 
+                                                for idx, (e, f) in enumerate(zip(expected_csds, found_csds)) if e != f
+                                            ]
+                                            mismatch_type = "ORDER MISMATCH (sets contain identical CSD codes but different order)"
+                                        else:
+                                            missing = expected_set - found_set
+                                            extra = found_set - expected_set
+                                            mismatches = [f"Missing (in file, missing from split): {x}" for x in missing] + \
+                                                         [f"Extra (in split, not in file): {x}" for x in extra]
+                                            mismatch_type = "CONTENT MISMATCH (different molecules selected)"
+
+                                        error_msg = (
+                                            f"Block 3 test CSD codes mismatch for seed {self.random_seed} at {save_path}!\n"
+                                            f"--- Type: {mismatch_type} ---\n"
+                                            f"Expected count: {len(expected_csds)}\n"
+                                            f"Found count:    {len(found_csds)}\n"
+                                            f"Total mismatches: {len(mismatches)}\n"
+                                            f"First 5 mismatches:\n" + 
+                                            "\n".join(f"  > {m}" for m in mismatches[:5])
+                                        )
+                                        raise ValueError(error_msg)
+                                        
+                                    print(f"Verified {len(b3_test_csds)} Block 3 test CSD codes against existing file at {save_path}")
+                                else:
+                                    save_path.write_text(content)
+                                    print(f"Saved {len(b3_test_csds)} Block 3 test CSD codes to {save_path}")
+
+                        self.train_ds = Subset(dataset, train_idx)
+                        self.val_ds   = Subset(dataset, val_idx)
+                        self.test_ds  = Subset(dataset, test_idx)
+                    case "3test":
+                        save_path = self._get_block_3_test_csds_path()
+                        if not save_path.exists():
+                            raise FileNotFoundError(
+                                f"Block 3 test CSDs file not found at {save_path}. "
+                                f"You must run with `block_3_split_mode='345'` first to generate it."
+                            )
+                        
+                        valid_csds = set(save_path.read_text().strip().splitlines())
+                        
+                        test_idx = []
+                        # Only look within the dataset indices that belong to Block 3
+                        for i in block_3_indices:
+                            if str(dataset[i].CSD_code) in valid_csds:
+                                test_idx.append(i)
+                        
+                        if len(test_idx) != len(valid_csds):
+                            print(f"Warning: Found {len(test_idx)} molecules matching the {len(valid_csds)} expected test CSDs.")
+
+                        self.train_ds = Subset(dataset, [])
+                        self.val_ds = Subset(dataset, [])
+                        self.test_ds = Subset(dataset, test_idx)
                     case _:
                         raise ValueError(f"Invalid `block_3_split_mode` {block_3_split_mode}")
 
-                self.test_ds = test_pool
-
-                if self.config.group_by_isomers:
-                    self.train_ds, self.val_ds = _isomer_group_split(
-                        train_val_pool, norm_train_r, stratify=is_binary_task
-                    )
-                else:
-                    if is_binary_task:
-                        labels = list(map(_get_binary_label, train_val_pool))
-                        indices = list(range(len(train_val_pool)))
-                        train_idx, val_idx = train_test_split(
-                            indices, train_size=norm_train_r, stratify=labels, random_state=self.random_seed
+                if block_3_split_mode in ["train", "test"]:
+                    self.test_ds = test_pool
+    
+                    if self.config.group_by_isomers:
+                        self.train_ds, self.val_ds = _isomer_group_split(
+                            train_val_pool, norm_train_r, stratify=is_binary_task
                         )
-                        self.train_ds = Subset(train_val_pool, train_idx)
-                        self.val_ds = Subset(train_val_pool, val_idx)
                     else:
-                        num_train = int(len(train_val_pool) * norm_train_r)
-                        num_val = len(train_val_pool) - num_train
-                        self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val], self.reseed_generator())
+                        if is_binary_task:
+                            labels = list(map(_get_binary_label, train_val_pool))
+                            indices = list(range(len(train_val_pool)))
+                            train_idx, val_idx = train_test_split(
+                                indices, train_size=norm_train_r, stratify=labels, random_state=self.random_seed
+                            )
+                            self.train_ds = Subset(train_val_pool, train_idx)
+                            self.val_ds = Subset(train_val_pool, val_idx)
+                        else:
+                            num_train = int(len(train_val_pool) * norm_train_r)
+                            num_val = len(train_val_pool) - num_train
+                            self.train_ds, self.val_ds = random_split(train_val_pool, [num_train, num_val], self.reseed_generator())
         else:
             self.train_ds = Subset(dataset, dataset.split_indices["train"])
             self.val_ds   = Subset(dataset, dataset.split_indices["val"])
@@ -273,14 +414,60 @@ class GraphLevelDataModule(GraphDataModule):
             assert train_isomers.isdisjoint(test_isomers), "Data leakage: Train & Test share isomers"
             assert val_isomers.isdisjoint(test_isomers), "Data leakage: Val & Test share isomers"
 
-            print(f"Unique isomers: train: {len(train_isomers)} | val: {len(val_isomers)} | test: {len(test_isomers)}")
+            train_iso_count = len(train_isomers)
+            val_iso_count = len(val_isomers)
+            test_iso_count = len(test_isomers)
+            
+            train_ds_len = len(self.train_ds)
+            val_ds_len = len(self.val_ds)
+            test_ds_len = len(self.test_ds)
 
-        print(self.test_ds[0].y)
+
+            train_iso_pct = (train_iso_count / train_ds_len * 100) if train_ds_len > 0 else 0.0
+            val_iso_pct = (val_iso_count / val_ds_len * 100) if val_ds_len > 0 else 0.0
+            test_iso_pct = (test_iso_count / test_ds_len * 100) if test_ds_len > 0 else 0.0
+
+            print(f"Unique isomers: train: {train_iso_count} ({train_iso_pct:.2f}%) | "
+                  f"val: {val_iso_count} ({val_iso_pct:.2f}%) | "
+                  f"test: {test_iso_count} ({test_iso_pct:.2f}%)")
+
+        print("Test ds first entry:", self.test_ds[0].y)
+
+        # -- Atom leakage test
+        if len(self.train_ds) > 0:
+            def _get_atoms(ds): 
+                return set().union(*(d.z.tolist() for d in ds))
+            
+            train_atoms = _get_atoms(self.train_ds)
+            val_atoms = _get_atoms(self.val_ds)
+            test_atoms = _get_atoms(self.test_ds)
+            
+            missing_atoms = (val_atoms | test_atoms) - train_atoms
+            if missing_atoms:
+                bad_atom = next(iter(missing_atoms))
+                # Find the offending molecule in val or test
+                bad_d = next(d for ds in (self.val_ds, self.test_ds) for d in ds if bad_atom in d.z.tolist())
+                
+                raise ValueError(
+                    f"Atom {bad_atom} is present in val/test but missing from the training set!\n"
+                    f"Molecule CSD: {bad_d.CSD_code} | SMILES: {bad_d.smiles}\n"
+                    f"Train atoms: {sorted(train_atoms)}\n"
+                    f"Val atoms:   {sorted(val_atoms)}\n"
+                    f"Test atoms:  {sorted(test_atoms)}"
+                )
+        else:
+            print("Skipping atom leakage check because train_ds is empty.")
+        # --- ATOM LEAKAGE CHECK END ---
 
         self._standarize_output(output_type=self.config.additional_loading_params['prediction_type'],
                                 standarize_lambda=self.config.additional_loading_params['standarize_lambda'],
                                 standarize_f=self.config.additional_loading_params['standarize_f'])
         
+        if hasattr(self, "_y_mean"):
+            print("Test ds first entry (after standardization):", self.test_ds[0].y)
+            print("Standardization Means:\n", self._y_mean)
+            print("Standardization Stds:\n",  self._y_std)
+
         full_ds_len = sum(map(len, (
             self.train_ds, self.val_ds, self.test_ds
         )))
@@ -290,37 +477,69 @@ class GraphLevelDataModule(GraphDataModule):
         if is_binary_task:
             def print_split_stats(split_name, ds):
                 if ds is None or len(ds) == 0:
-                    print(f"len of {split_name} is 0")
+                    print(f"\n--- {split_name.upper()} SPLIT ---")
+                    print("Total: 0")
                     return
                 
-                # Extract all labels for this split
                 labels = [_get_binary_label(d) for d in ds]
                 total = len(labels)
                 pos_count = sum(labels)
                 neg_count = total - pos_count
                 pos_pct = (pos_count / total) * 100
-                
-                print(f"len of {split_name} is {total} ({total/full_ds_len:.2%} of all) | Pos: {pos_count} ({pos_pct:.2f}%) | Neg: {neg_count}")
+                neg_pct = (neg_count / total) * 100
+
+                block_counts = {3: 0, 4: 0, 5: 0}
+                for d in ds:
+                    b_id = int(d.block_id.view(-1)[0].item())
+                    block_counts[b_id] += 1
+
+                print(f"\n--- {split_name.upper()} SPLIT ---")
+                print(f"Total:  {total} ({total/full_ds_len:.2%} of all)")
+                print(f"Labels: Pos: {pos_count} ({pos_pct:.2f}%) | Neg: {neg_count} ({neg_pct:.2f}%)")
+                print("Blocks:")
+                for b in [3, 4, 5]:
+                    cnt = block_counts[b]
+                    pct = (cnt / total * 100) if total > 0 else 0
+                    print(f"  > {b}d: {cnt} ({pct:.2f}%)")
 
             print_split_stats("train", self.train_ds)
             print_split_stats("val", self.val_ds)
             print_split_stats("test", self.test_ds)
         else:
-            for ds_label, ds_subset in(
+            for ds_label, ds_subset in (
                 ("train", self.train_ds),
                 ("val", self.val_ds),
                 ("test", self.test_ds)
             ):
-                ds_len = len(ds_subset)
+                if ds_subset is None or len(ds_subset) == 0:
+                    print(f"\n--- {ds_label.upper()} SPLIT ---")
+                    print("Total: 0")
+                    continue
 
-                print(f"len of {ds_label} is {ds_len} ({ds_len/full_ds_len:.2%} of all)")
+                ds_len = len(ds_subset)
+                block_counts = {3: 0, 4: 0, 5: 0}
+                for d in ds_subset:
+                    b_id = int(d.block_id.view(-1)[0].item())
+                    block_counts[b_id] += 1
+
+                print(f"\n--- {ds_label.upper()} SPLIT ---")
+                print(f"Total: {ds_len} ({ds_len/full_ds_len:.2%} of all)")
+                print("Blocks:")
+                for b in [3, 4, 5]:
+                    cnt = block_counts[b]
+                    pct = (cnt / ds_len * 100) if ds_len > 0 else 0
+                    print(f"  > {b}d: {cnt} ({pct:.2f}%)")
 
     def _get_dataloader(self, dataset: Subset, **kwargs) -> DataLoader:
-        return DataLoader(dataset, batch_size=self.batch_size, drop_last=True, **kwargs)
+        kwargs.setdefault(
+            "drop_last", False
+        )
+
+        return DataLoader(dataset, batch_size=self.batch_size, **kwargs)
 
     def train_dataloader(self) -> DataLoader:
         assert self.train_ds is not None
-        return self._get_dataloader(self.train_ds, shuffle=True)
+        return self._get_dataloader(self.train_ds, drop_last=True, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
         assert self.val_ds is not None
@@ -337,6 +556,65 @@ class GraphLevelDataModule(GraphDataModule):
     def _standarize_output(self, output_type: str, standarize_lambda: bool, standarize_f: bool):
         if self.train_ds is None:
             raise RuntimeError("train_ds is not initialized. Call setup() before _standarize_output().")
+
+        if output_type == "multi_regressor":
+            if not standarize_lambda and not standarize_f:
+                return  # no-op if both are False
+
+            # Gather all y vectors from train_ds into a matrix
+            train_y_list = [data.y.view(-1) for data in self.train_ds]
+            train_y_tensor = torch.stack(train_y_list, dim=0)  # Shape: (N, 20)
+            
+            num_states = train_y_tensor.size(1) // 2
+            
+            # Calculate means and stds per channel (column-wise)
+            means = train_y_tensor.mean(dim=0)
+            stds = train_y_tensor.std(dim=0, unbiased=False)
+            
+            # If a modality shouldn't be standardized, revert its stats to mean=0, std=1
+            if not standarize_lambda:
+                means[:num_states] = 0.0
+                stds[:num_states] = 1.0
+            if not standarize_f:
+                means[num_states:] = 0.0
+                stds[num_states:] = 1.0
+                
+            self._y_mean = means
+            self._y_std = stds + 1e-8  # Add epsilon to prevent division by zero
+
+            # Register with singletons (passing the 1D tensors now, not scalars)
+            if standarize_lambda:
+                StandarizerSingletonLambda.set_values(
+                    mean_lambda=self._y_mean[:num_states].clone(), 
+                    std_lambda=self._y_std[:num_states].clone()
+                )
+            if standarize_f:
+                StandarizerSingletonF.set_values(
+                    mean_f=self._y_mean[num_states:].clone(), 
+                    std_f=self._y_std[num_states:].clone()
+                )
+
+            # Apply standardizer via vectorization
+            def _standardize_dataset(ds):
+                if ds is None:
+                    return None
+                standardized = []
+                for i in range(len(ds)):
+                    data = ds[i].clone()
+                    y = data.y.view(-1).clone()
+                    
+                    # Apply standardization to all 20 channels at once
+                    y = (y - self._y_mean) / self._y_std
+                    
+                    data.y = y.view_as(data.y)
+                    standardized.append(data)
+                return standardized
+
+            self.train_ds = _standardize_dataset(self.train_ds)
+            self.val_ds   = _standardize_dataset(self.val_ds)
+            self.test_ds  = _standardize_dataset(self.test_ds)
+            
+            return
 
         if output_type == "pairs":
             if not standarize_lambda and not standarize_f:
@@ -542,8 +820,11 @@ class GraphLevelDataModule(GraphDataModule):
                 StandarizerSingletonLambda.set_values(mean_lambda=val_mean, std_lambda=val_std)
             return
         if output_type in ["binary_classification",'binary_vector_multiclass', 'binary_vector_multilabel']:
-            print('SHAPE: ', self.train_ds[0].y.shape)
-            print('VALUES: ', self.train_ds[0].y)
+            if len(self.train_ds):
+                print('SHAPE: ', self.train_ds[0].y.shape)
+                print('VALUES: ', self.train_ds[0].y)
+            else:
+                print("Empty training dataset")
             return
         else:
             raise ValueError(f"Unknown standarization type: {type!r}. Expected 'pairs', 'vector', or 'only_lambdas'.")

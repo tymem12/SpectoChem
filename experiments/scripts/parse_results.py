@@ -29,8 +29,8 @@ from gjepa.utils import spectral_loss
 SEEDS = [2137, 42, 1234]
 BASE_MODELS = ["schnet", "gine", "gat", "gcn"]
 MODELS = BASE_MODELS + ["dummy"]
-BLOCK_SPLITS_BINARY = ["none", "test"]
-BLOCK_SPLITS_REGRESSION = ["null", "test"]
+BLOCK_SPLITS_BINARY = ["none", "345", "3test"]
+BLOCK_SPLITS_REGRESSION = ["null", "345", "3test"]
 
 BASE_DIR = Path("data/experiments/supervised")
 
@@ -104,8 +104,27 @@ def create_dummy_baseline(ref_dir: Path):
     )
     datamodule.setup(stage="fit")
 
-    y_train, _ = get_targets_and_ids(datamodule.train_dataloader())
-    y_val, _ = get_targets_and_ids(datamodule.val_dataloader())
+    if config.dataset.block_3_split_mode == "3test":
+        import copy
+        print(f"  -> '3test' split detected with empty train set. Fetching train distribution from '345'...")
+        train_config = copy.deepcopy(config)
+        train_config.dataset.block_3_split_mode = "345"
+
+        seed_everything(seed)
+        
+        train_dm = GraphLevelDataModule(
+            dataset_config=train_config.dataset,
+            batch_size=train_config.training.batch_size,
+            pos_enc_path=train_config.pos_encoding.file if train_config.pos_encoding else None,
+        )
+        train_dm.setup(stage="fit")
+        
+        y_train, _ = get_targets_and_ids(train_dm.train_dataloader())
+        y_val, _ = get_targets_and_ids(train_dm.val_dataloader())
+    else:
+        y_train, _ = get_targets_and_ids(datamodule.train_dataloader())
+        y_val, _ = get_targets_and_ids(datamodule.val_dataloader())
+
     y_test, test_ids = get_targets_and_ids(datamodule.test_dataloader())
     y_total = np.concatenate([y_train, y_val, y_test])
 

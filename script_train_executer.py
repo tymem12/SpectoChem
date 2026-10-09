@@ -45,12 +45,18 @@ def run_cmd(cmd, log_info):
     int_inter += 1
 
 def run_binary(model_name, seed, block_3_split):
+    block_3_only = block_3_split == "none"
+    block_3_split_str = block_3_split
+
+    if block_3_only:
+        block_3_split = "null"
+    else:
+        block_3_split = repr(block_3_split)
+
     for min_f_value in [0.01]:
         for metric, metric_mode in [('AUROC', 'max')]:
             # experiment_path = f"supervised/{data_time}/binary_classification/{model_name}/{exp_param_str}/UMA_full_embedding/min_f_value_{min_f_value}/metric_{metric}/330-650/results"
-            experiment_path = f"supervised/{seed}/binary_classification/{model_name}/block_3_{block_3_split}/results"
-            block_3_only = block_3_split == "none"
-            block_3_split = block_3_split if block_3_split != "none" else 'null'
+            experiment_path = f"supervised/{seed}/binary_classification/{model_name}/block_3_{block_3_split_str}/results"
             
             metrics_path = Path("data", "experiments", experiment_path, "lightning_logs", f"version_{seed}", "metrics.json")
             if metrics_path.exists():
@@ -83,7 +89,13 @@ def run_lambda_regression(model_name, seed,
                           block_3_split = 'test'):
     exp_type_log = f"LAMBDA_REGRESSION"
     block_3_only = block_3_split == "none"
-    block_3_split = block_3_split if block_3_split != "none" else 'null'
+    if block_3_split == "none":
+        block_3_split_str = "null"
+        block_3_split = block_3_split_str
+    else:
+        block_3_split_str = block_3_split
+        block_3_split = repr(block_3_split)
+
     min_f_value = -1
 
     f_outlier_threshold = 'null'
@@ -92,7 +104,7 @@ def run_lambda_regression(model_name, seed,
     f_as_log10 = False
 
     for num_pair in range(0, 10):
-        experiment_path = f"supervised/{seed}/lambda_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}_f-as-log10-{f_as_log10}/block_3_{block_3_split}/results"
+        experiment_path = f"supervised/{seed}/lambda_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}_f-as-log10-{f_as_log10}/block_3_{block_3_split_str}/results"
 
         metrics_path = Path("data", "experiments", experiment_path, "lightning_logs", f"version_{seed}", "metrics.json")
 
@@ -126,7 +138,13 @@ def run_lambda_regression(model_name, seed,
 def run_f_regression(model_name, seed, standarization, f_as_log10: bool, block_3_split):
     exp_type_log = f"F_REGRESSION"
     block_3_only = block_3_split == "none"
-    block_3_split = block_3_split if block_3_split != "none" else 'null'
+
+    if block_3_split == "none":
+        block_3_split_str = "null"
+        block_3_split = block_3_split_str
+    else:
+        block_3_split_str = block_3_split
+        block_3_split = repr(block_3_split)
 
     min_f_value = -1
     f_outlier_threshold = 'null'
@@ -134,7 +152,7 @@ def run_f_regression(model_name, seed, standarization, f_as_log10: bool, block_3
     normalize_eV = False    
 
     for num_pair in range(0, 10):
-        experiment_path = f"supervised/{seed}/f_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}_f-as-log10-{f_as_log10}/block_3_{block_3_split}/results"
+        experiment_path = f"supervised/{seed}/f_regressor/{num_pair}/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}_f-as-log10-{f_as_log10}/block_3_{block_3_split_str}/results"
 
         metrics_path = Path("data", "experiments", experiment_path, "lightning_logs", f"version_{seed}", "metrics.json")
         if metrics_path.exists():
@@ -165,6 +183,54 @@ def run_f_regression(model_name, seed, standarization, f_as_log10: bool, block_3
         
         run_cmd(cmd, f"{model_name} | {exp_type_log} | num_pair={num_pair}")
 
+def run_multi_regression(model_name, seed, standarization, normalize_eV, f_as_log10, block_3_split):
+    exp_type_log = f"MULTI_REGRESSION"
+    block_3_only = block_3_split == "none"
+
+    if block_3_split == "none":
+        block_3_split_str = "null"
+        block_3_split = block_3_split_str
+    else:
+        block_3_split_str = block_3_split
+        block_3_split = repr(block_3_split)
+
+    min_f_value = -1
+    f_outlier_threshold = 'null'
+    sort_by_max_f = False
+
+    # No num_pair loop — predicting all 20 elements at once
+    experiment_path = f"supervised/{seed}/multi_regressor/{model_name}/std-{standarization}/norm_to_eV-{normalize_eV}_f-as-log10-{f_as_log10}/block_3_{block_3_split_str}/results"
+
+    metrics_path = Path("data", "experiments", experiment_path, "lightning_logs", f"version_{seed}", "metrics.json")
+    if metrics_path.exists():
+        print(f"Skipping existing: {experiment_path}")
+        return
+
+    cmd = [
+        "python", "experiments/scripts/train_graph_level.py",
+        "+exp=TMQM_SPECTO_MULTI_REGRESSOR",
+        "model=supervised_graph_level",
+        f"backbone@model.backbone={model_name}",
+        f"training.experiment_name={experiment_path}",
+        f"training.random_seed={seed}",
+        f"dataset.block_3_split_mode={block_3_split}",
+        f"dataset.additional_loading_params.num_states=10",
+        f"dataset.additional_loading_params.min_f_value={min_f_value}",
+        f"dataset.additional_loading_params.filter_f_value={min_f_value}",
+        f"dataset.additional_loading_params.sort_by_max_f={sort_by_max_f}",
+        f"dataset.additional_loading_params.outlier_strategy={OUTLIER_STRATEGY}",
+        f"dataset.additional_loading_params.standarize_lambda={standarization}",
+        f"dataset.additional_loading_params.standarize_f={standarization}",
+        f"dataset.additional_loading_params.lambda_outlier_threshold={LAMBDA_OUTLIER_THRESHOLD}",
+        f"dataset.additional_loading_params.f_outlier_threshold={f_outlier_threshold}",
+        f"dataset.additional_loading_params.convert_to_ev={normalize_eV}",
+        f"dataset.additional_loading_params.f_as_log10={f_as_log10}",
+        f"dataset.additional_loading_params.block_3_only={block_3_only}",
+        "dataset.additional_loading_params.filter_type=all_samples"
+    ]
+    
+    run_cmd(cmd, f"{model_name} | {exp_type_log}")
+
 # --- MAIN EXECUTION LOOP ---
 def main():
     parser = argparse.ArgumentParser(description="Run specific experiments with specific models.")
@@ -174,7 +240,7 @@ def main():
         "--block_3_split",
         type=str,
         required=True,
-        choices=["test", "val", "none"],
+        choices=["test", "345", "3test", "none"],
     )
     # Use BooleanOptionalAction to automatically support --outliers and --no-outliers
     
@@ -215,9 +281,6 @@ def main():
     standarization = args.standarization
     normalize_eV = args.normalize_eV
     f_as_log10 = args.f_as_log10
-    
-    
-
 
     if exp_to_run == "binary":
         run_binary(model_name, seed, block_3_split)
@@ -227,6 +290,9 @@ def main():
     elif exp_to_run == 'f_regression':
         run_f_regression(model_name, seed,
                 standarization, f_as_log10, block_3_split)
+    elif exp_to_run == 'multi_regression':
+        run_multi_regression(model_name, seed, 
+                standarization, normalize_eV, f_as_log10, block_3_split)
     else:
         print(f"Error: Unknown experiment '{exp_to_run}'.")
         sys.exit(1)

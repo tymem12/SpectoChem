@@ -2,4 +2,6 @@ gnn_cls: gjepa.models.backbones.GINEEncoder
 hidden_channels: 128
 num_layers: 3
 dropout: 0
+num_gaussians: 50
+cutoff: 10
 out_dim: ${.hidden_channels}
