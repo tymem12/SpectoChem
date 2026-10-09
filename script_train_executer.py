@@ -208,13 +208,13 @@ def run_multi_regression(model_name, seed, standarization, normalize_eV, f_as_lo
 
     cmd = [
         "python", "experiments/scripts/train_graph_level.py",
-        "+exp=TMQM_SPECTO_MULTI_REGRESSOR", # <--- Assuming this is the name of your new config file
+        "+exp=TMQM_SPECTO_MULTI_REGRESSOR",
         "model=supervised_graph_level",
         f"backbone@model.backbone={model_name}",
         f"training.experiment_name={experiment_path}",
         f"training.random_seed={seed}",
         f"dataset.block_3_split_mode={block_3_split}",
-        f"dataset.additional_loading_params.num_states=10", # <--- Gets 10 states (which yields 20 values)
+        f"dataset.additional_loading_params.num_states=10",
         f"dataset.additional_loading_params.min_f_value={min_f_value}",
         f"dataset.additional_loading_params.filter_f_value={min_f_value}",
         f"dataset.additional_loading_params.sort_by_max_f={sort_by_max_f}",

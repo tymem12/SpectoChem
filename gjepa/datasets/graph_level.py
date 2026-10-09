@@ -244,7 +244,6 @@ class GraphLevelDataModule(GraphDataModule):
                         train_val_pool, test_pool = non_block_3_subset, block_3_subset
                     case "345":
                         # Helper to split any dataset pool using isomer or binary stratification logic
-                        # Now explicitly returns flat indices relative to sub_ds
                         def _split_sub_pool(sub_ds):
                             if self.config.group_by_isomers:
                                 tr_r, v_r = split_ratios[0], split_ratios[1]
@@ -562,13 +561,13 @@ class GraphLevelDataModule(GraphDataModule):
             if not standarize_lambda and not standarize_f:
                 return  # no-op if both are False
 
-            # 1. Gather all y vectors from train_ds into a matrix
+            # Gather all y vectors from train_ds into a matrix
             train_y_list = [data.y.view(-1) for data in self.train_ds]
             train_y_tensor = torch.stack(train_y_list, dim=0)  # Shape: (N, 20)
             
             num_states = train_y_tensor.size(1) // 2
             
-            # 2. Calculate means and stds per channel (column-wise)
+            # Calculate means and stds per channel (column-wise)
             means = train_y_tensor.mean(dim=0)
             stds = train_y_tensor.std(dim=0, unbiased=False)
             
@@ -583,7 +582,7 @@ class GraphLevelDataModule(GraphDataModule):
             self._y_mean = means
             self._y_std = stds + 1e-8  # Add epsilon to prevent division by zero
 
-            # 3. Register with singletons (passing the 1D tensors now, not scalars)
+            # Register with singletons (passing the 1D tensors now, not scalars)
             if standarize_lambda:
                 StandarizerSingletonLambda.set_values(
                     mean_lambda=self._y_mean[:num_states].clone(), 
@@ -595,7 +594,7 @@ class GraphLevelDataModule(GraphDataModule):
                     std_f=self._y_std[num_states:].clone()
                 )
 
-            # 4. Apply standardizer via vectorization
+            # Apply standardizer via vectorization
             def _standardize_dataset(ds):
                 if ds is None:
                     return None

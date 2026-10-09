@@ -362,7 +362,7 @@ class TMQMGStarDataset(InMemoryDataset):
     def _prepare_the_output_format(self, transitions):
         if self.prediction_type not in {"pairs", "vector", 'only_lambdas', 'binary_classification',
                                         'binary_vector_multiclass', 'binary_vector_multilabel',
-                                        'lambda_regressor', 'f_regressor', 'multi_regressor'}: # <-- added here
+                                        'lambda_regressor', 'f_regressor', 'multi_regressor'}:
             raise ValueError('prediction type did not mach: ', " pairs ", " vector ",
                              "only_lambdas", " binary_classification",
                              'lambda_regressor', 'f_regressor')
@@ -387,8 +387,8 @@ class TMQMGStarDataset(InMemoryDataset):
             return self._build_lambda_regressor(transitions, num_pairs=self.num_states)
         elif self.prediction_type == 'f_regressor':
             return self._build_f_regressor(transitions, num_pairs=self.num_states)
-        elif self.prediction_type == 'multi_regressor':               # <--- NEW
-            return self._build_multi_regressor(transitions, self.num_states) # <--- NEW
+        elif self.prediction_type == 'multi_regressor':
+            return self._build_multi_regressor(transitions, self.num_states)
     def remove_outliers(self, transitions):
         if not transitions:
             return []
@@ -423,7 +423,7 @@ class TMQMGStarDataset(InMemoryDataset):
     def convert_f_to_log10(self, transitions):
         if not transitions:
             return []
-        if self.f_as_log10 and self.prediction_type in {"pairs", 'f_regressor', 'multi_regressor'}: # <-- added here
+        if self.f_as_log10 and self.prediction_type in {"pairs", 'f_regressor', 'multi_regressor'}:
             def _f_to_log10(f: float):
                 # we could use 1e-8 but then the log10 f distribution has a spike at x=-8 and is completely flat (no data)
                 # for -8 < x < -4; so setting the threshold at 1e-5 we'll get tighter distribution with no gaps

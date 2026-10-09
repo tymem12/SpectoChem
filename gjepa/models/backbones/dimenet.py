@@ -14,7 +14,7 @@ class DimeNetEncoder(DimeNet):
                  num_output_layers: int = 3, **kwargs):
         super().__init__(
             hidden_channels=hidden_channels,
-            out_channels=hidden_channels,             # <-- key change
+            out_channels=hidden_channels,
             num_blocks=num_blocks,
             num_bilinear=num_bilinear,
             num_spherical=num_spherical,
