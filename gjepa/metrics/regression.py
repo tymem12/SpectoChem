@@ -4,8 +4,6 @@ import torch
 
 from torchmetrics import Metric, MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score
 
-from gjepa.utils.spectral_loss import sid, jsd, smse, wasserstein
-
 class StandardizedMAE(Metric):
     full_state_update = False
 
@@ -25,29 +23,6 @@ class StandardizedMAE(Metric):
         mae_per_target_std = mae_per_target / self.y_std
         return mae_per_target_std.mean()
 
-class SpectralMetric(Metric):
-    """Wraps a callable (sid, jsd, etc.) into a TorchMetric."""
-    full_state_update = False
-
-    def __init__(self, func: Callable, **kwargs):
-        super().__init__()
-        self.func = func
-        self.func_kwargs = kwargs
-
-        self.add_state("values", default=torch.tensor(0.0), dist_reduce_fx="sum")
-        self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
-
-    def update(self, preds: torch.Tensor, target: torch.Tensor):
-        with torch.no_grad():
-            vals = self.func(preds, target, **self.func_kwargs)
-            if vals.ndim > 0:
-                vals = vals.mean()
-            self.values += vals.detach().cpu()
-            self.total += 1
-
-    def compute(self):
-        return self.values / self.total
-
 def get_default_regression_metrics(
     task_type: Literal["regression", "multiregression"], output_dim: int,
     y_std: torch.Tensor | None = None,
@@ -65,17 +40,6 @@ def get_default_regression_metrics(
             raise ValueError("Multivariate regression expects `output_dim` >= 2")
 
         metrics = _get_multivariate_regression_metrics(output_dim, y_std=y_std, **kwargs)
-
-        if prediction_type == "vector":
-            spectral_metrics = {
-                "SID": SpectralMetric(sid),
-                "JSD": SpectralMetric(jsd),
-                "SMSE": SpectralMetric(smse),
-                "Wasserstein": SpectralMetric(wasserstein),
-            }
-            # TODO: restore spectral metrics (currently they cause issues with
-            # gradients not being able to flow when using inplace operations)
-            #metrics.add_metrics(spectral_metrics)
     else:
         raise ValueError(f"Invalid `task_type` for regression: {task_type!r}")
 

@@ -16,7 +16,6 @@ from gjepa.config import GraphLevelExperimentConfig
 from gjepa.models.encoders import GNNEncoder
 from gjepa.models.predictors import MLPClassifier, MLPRegressor
 from gjepa.utils.lr_scheduler import LinearWarmupCosineAnnealingLR  # type: ignore
-from gjepa.utils.cv_vis import plot_graph_with_predictions
 from gjepa.datasets.cv_vis.standarizer_singleton import StandarizerSingletonF, StandarizerSingletonLambda
 
 
@@ -47,8 +46,6 @@ class SupervisedGraphLevelGNN(LightningModule):
             predictor_cls = MLPRegressor
             predictor_kwargs |= dict(
                 prediction_type=self._get_prediction_type(),
-                #spectral_loss="sid",
-                #threshold=1e-8
             )
         else:
             predictor_cls = MLPClassifier
@@ -200,7 +197,6 @@ class SupervisedGraphLevelGNN(LightningModule):
         csv_path = os.path.join(save_dir, "test_predictions_wide.csv")
         df.to_csv(csv_path, index=False)
         
-        plot_graph_with_predictions(df, output_params['prediction_type'], save_dir, tuple(output_params['vis_range']))
         print(f"[SupervisedGraphLevelGNN] saved predictions to: {csv_path}")
         
         csv_path_stats = os.path.join(save_dir, "mean_and_std_val.csv")

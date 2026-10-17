@@ -6,8 +6,6 @@ from torch_geometric.nn.models.schnet import GaussianSmearing
 import torch.nn.functional as F
 
 class GCNEncoder(nn.Module):
-    handles_pos_encoding = False
-
     def __init__(
         self,
         hidden_channels: int = 128,

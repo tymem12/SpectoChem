@@ -1,6 +1,0 @@
-name: noise_pos
-file: data/pos_encoding/${dataset.name}/${.name}.pt
-dim: 3
-transforms:
-  NoisePosition:
-    attr_name: positional_encoding

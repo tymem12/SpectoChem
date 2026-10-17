@@ -10,10 +10,10 @@ from pytorch_lightning import LightningDataModule, LightningModule, Trainer
 from rich import print
 
 from experiments.training_utils import save_metrics, setup_trainer
-from gjepa.config import GraphLevelExperimentConfig, GraphLevelJEPAConfig
-from gjepa.datasets import GJEPANodeLevelDataModule
-from gjepa.datasets.graph_level import GraphLevelDataModule, GraphLevelJEPASamplingDataModule
-from gjepa.datasets.node_level import ClusterDatamodule
+from gjepa.config import GraphLevelExperimentConfig
+
+from gjepa.datasets.graph_level import GraphLevelDataModule
+
 from gjepa.utils import import_from_string
 from gjepa.utils.config import resolve_config
 
@@ -55,21 +55,7 @@ def main(cfg: DictConfig) -> None:
         datamodule = GraphLevelDataModule(
             dataset_config=config.dataset,
             batch_size=config.training.batch_size,
-            pos_enc_path=config.pos_encoding.file if config.pos_encoding else None,
         )
-    elif model_config.name == "gjepa":
-        assert isinstance(model_config, GraphLevelJEPAConfig)
-        assert config.pos_encoding is not None
-        if model_config.sampling_method == "random":
-            datamodule = GraphLevelJEPASamplingDataModule(
-                dataset_config=config.dataset,
-                batch_size=config.training.batch_size,
-                pos_enc_path=config.pos_encoding.file if config.pos_encoding else None,
-                context_ratio=model_config.context_ratio,
-                target_ratio=model_config.target_ratio,
-            )
-        else:
-            raise ValueError(f"Invalid subgraph_method: {model_config.sampling_method}")
     else:
         raise ValueError(f"Invalid model name: {model_config.name}")
 

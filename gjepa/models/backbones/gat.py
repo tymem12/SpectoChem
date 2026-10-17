@@ -4,8 +4,6 @@ from torch_geometric.nn.models import GAT
 from torch_geometric.nn.models.schnet import GaussianSmearing
 
 class GATEncoder(nn.Module):
-    handles_pos_encoding = False
-
     def __init__(
         self,
         hidden_channels: int = 128,

@@ -1,10 +1,5 @@
 import importlib
-import json
-from pathlib import Path
 from typing import Any
-
-from tabulate import tabulate
-
 
 def import_from_string(dotted_path: str) -> Any:
     """
@@ -31,18 +26,3 @@ def import_from_string(dotted_path: str) -> Any:
             class_name,
         )
         raise ImportError(msg)
-
-
-def tabulate_dict(d: dict[str, Any], **kwargs: Any) -> str:
-    """Transforms dict into pretty table string (keys and values forms a row)."""
-    return tabulate(
-        [[key, val] for key, val in d.items()],
-        headers=["Name", "Value"],
-        **kwargs,
-    )
-
-
-def load_json(path: str | Path) -> dict[str, Any]:
-    """Loads json from the file"""
-    with open(path) as file:
-        return json.load(file)

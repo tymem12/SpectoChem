@@ -4,11 +4,10 @@
 
 
 
-from typing import Callable, List, Tuple, Union
+from typing import List
 
 import numpy as np
 import torch
-from torch import Tensor
 from tqdm import trange
 
 def sid(model_spectra: torch.tensor, target_spectra: torch.tensor, threshold: float = 1e-8, eps: float = 1e-8, torch_device: str = 'cpu') -> torch.tensor:

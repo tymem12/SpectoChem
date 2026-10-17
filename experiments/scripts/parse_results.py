@@ -1,4 +1,3 @@
-import os
 import json
 import glob
 import time
@@ -100,7 +99,6 @@ def create_dummy_baseline(ref_dir: Path):
     datamodule = GraphLevelDataModule(
         dataset_config=config.dataset,
         batch_size=config.training.batch_size,
-        pos_enc_path=config.pos_encoding.file if config.pos_encoding else None,
     )
     datamodule.setup(stage="fit")
 
@@ -115,7 +113,6 @@ def create_dummy_baseline(ref_dir: Path):
         train_dm = GraphLevelDataModule(
             dataset_config=train_config.dataset,
             batch_size=train_config.training.batch_size,
-            pos_enc_path=train_config.pos_encoding.file if train_config.pos_encoding else None,
         )
         train_dm.setup(stage="fit")
         

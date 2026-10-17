@@ -25,8 +25,4 @@ class GNNEncoder(nn.Module):
         self,        
         batch: Data
     ) -> Tensor:
-        
-        if self.gnn.handles_pos_encoding:
-            return self.gnn(batch)
-        else:
-            return self.gnn(batch)
+        return self.gnn(batch)

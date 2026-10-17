@@ -14,14 +14,11 @@ import os
 import torch
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Dataset, Data, Dataset, InMemoryDataset
-from torch_geometric.datasets import ZINC, QM9, TUDataset
 from torch_geometric.transforms import BaseTransform
 
 from gjepa.utils.pyg import create_transform
 
 from gjepa.config import GraphLevelDatasetConfig
-from gjepa.datasets.node_level import GraphDataModule
-from gjepa.utils.pos_encoding import attach_pe_to_dataset_inplace
 from gjepa.utils.graph_level import split_dataset
 import torch.nn.functional as F
 from gjepa.datasets.cv_vis.tmqmg_star import TMQMGStarDataset
@@ -51,13 +48,11 @@ class GraphLevelDataModule(GraphDataModule):
         dataset_config: GraphLevelDatasetConfig,
         batch_size: int,
         random_seed: Optional[int] = None,
-        pos_enc_path: Path = None
     ):
         super().__init__(dataset_config, batch_size)
 
         self.config = dataset_config
         self.batch_size = batch_size
-        self.pos_enc_path = pos_enc_path
 
         self.train_ds: Subset | None = None
         self.val_ds: Subset | None = None
@@ -94,7 +89,7 @@ class GraphLevelDataModule(GraphDataModule):
 
         split_ratios = self.config.split_ratios
 
-        should_split = name != ZINC.__name__
+        should_split = True
 
         block_3_split_mode = self.config.block_3_split_mode
         is_binary_task = self.is_binary_task
@@ -141,9 +136,6 @@ class GraphLevelDataModule(GraphDataModule):
             pre_transform=create_transform(self.config.pre_transforms),
             transform=create_transform(self.config.transforms),
         )
-
-        if self.pos_enc_path is not None:
-            attach_pe_to_dataset_inplace(dataset=dataset, pe_path=self.pos_enc_path)
 
         def _get_isomer_key(d):
             return str(sorted(d.z.tolist()))
@@ -920,145 +912,3 @@ class OpenQDCToPyG(InMemoryDataset):
         data.atom_types = self.atom_types
         data.group_attr = 'name'
         torch.save((data, slices), self.processed_paths[0])
-
-class GraphJEPASampler(Dataset):
-    def __init__(
-        self,
-        base_dataset: Dataset,
-        context_ratio: float = 0.6,
-        target_ratio: float = 0.1,
-    ):
-        """
-        Wraps a graph-level dataset with JEPA-style context/target sampling.
-
-        Args:
-            base_dataset: dataset of Data objects
-            context_ratio: fraction of nodes to use as context
-            target_ratio: fraction of remaining nodes to use as target
-        """
-        self.base_dataset = base_dataset
-        self.context_ratio = context_ratio
-        self.target_ratio = target_ratio
-
-    def __len__(self):
-        return len(self.base_dataset)
-
-    def __getitem__(self, idx: int):
-        data: Data = self.base_dataset[idx]
-
-        num_nodes = data.num_nodes
-
-        assert num_nodes > 1
-
-        all_nodes = list(range(num_nodes))
-        random.shuffle(all_nodes)
-
-        num_context = int(self.context_ratio * num_nodes)
-
-        context_nodes = all_nodes[:num_context]
-
-        remaining_nodes = all_nodes[num_context:]
-        n_remaining = len(remaining_nodes)
-        num_target = int(self.target_ratio * n_remaining)
-        num_target = max(1, num_target)
-        target_nodes = remaining_nodes[:num_target]
-
-        context_mask = torch.zeros(num_nodes, dtype=torch.bool)
-        context_mask[context_nodes] = True
-        target_mask = torch.zeros(num_nodes, dtype=torch.bool)
-        target_mask[target_nodes] = True
-
-        edge_index = data.edge_index
-        context_edges = edge_index[:, context_mask[edge_index[0]] & context_mask[edge_index[1]]]
-
-        if hasattr(data, "positional_encoding"):
-            pos_enc = data.positional_encoding
-            context_pos = pos_enc[context_mask]
-        else:
-            pos_enc = None
-            context_pos = None
-
-        if hasattr(data, "z"):
-            z = data.z
-            context_z = z[context_mask]
-        else:
-            z = None
-            context_z = None
-
-        if hasattr(data, "pos"):
-            position = data.pos
-            context_position = position[context_mask]
-        x = data.x
-
-        context_x = x[context_mask]
-
-        y = data.y
-
-        # pack into Data objects
-        return {
-            "original": data,
-            "context": Data(
-                x=context_x,
-                edge_index=self._remap_edges(context_edges, context_nodes),
-                y=y,
-                positional_encoding=context_pos,
-                z=context_z,
-                pos=context_position
-                
-            ),
-            "targets": [
-                Data(
-                    x=x,
-                    edge_index=edge_index,
-                    y=y,
-                    positional_encoding=pos_enc,
-                    z=z,
-                    target_mask=target_mask,
-                    pos=position
-                    
-                )
-            ],
-        }
-        
-    def _remap_edges(self, edge_index, kept_nodes: list[int]):
-        """Reindex edges so node indices are contiguous after subsetting."""
-        if edge_index.numel() == 0:
-            return edge_index
-
-        # create a mapping from old node idx to new idx for only kept nodes
-        old_to_new = {old: new for new, old in enumerate(sorted(kept_nodes))}
-
-        # apply mapping to edge_index
-        remapped_edges = edge_index.clone()
-
-        for i, node_idx in enumerate(remapped_edges):
-            remapped_edges[i] = node_idx.apply_(lambda x: old_to_new[x])
-
-        return remapped_edges
-
-class GraphLevelJEPASamplingDataModule(GraphLevelDataModule):
-    def __init__(
-        self,
-        dataset_config: GraphLevelDatasetConfig,
-        batch_size: int,
-        pos_enc_path: Path = None,
-        context_ratio: float = 0.6,
-        target_ratio: float = 0.1,
-    ):
-        super().__init__(dataset_config, batch_size, pos_enc_path)
-        self.context_ratio = context_ratio
-        self.target_ratio = target_ratio
-
-    def train_dataloader(self) -> DataLoader:
-        assert self.train_ds is not None
-
-        wrapped_train = GraphJEPASampler(
-            self.train_ds,
-            context_ratio=self.context_ratio,
-            target_ratio=self.target_ratio,
-        )
-        return DataLoader(
-            wrapped_train,
-            batch_size=self.batch_size,
-            shuffle=True,
-        )

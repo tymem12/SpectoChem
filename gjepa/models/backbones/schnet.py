@@ -1,6 +1,4 @@
 import torch
-from torch import nn
-from torch_geometric.nn import radius_graph, global_add_pool
 from torch_geometric.data import Data
 
 try:
@@ -9,8 +7,6 @@ except ImportError:
     from torch_geometric.nn.models.schnet import SchNet
 
 class SchNetEncoder(SchNet):
-    handles_pos_encoding = True
-
     def __init__(self,
                  hidden_channels: int = 128,
                  num_filters: int = 128,

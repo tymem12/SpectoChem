@@ -1,6 +1,0 @@
-name: raw_pos
-file: data/pos_encoding/${dataset.name}/${.name}.pt
-dim: 3
-transforms:
-  Raw3DCoordinatesPE:
-    attr_name: positional_encoding

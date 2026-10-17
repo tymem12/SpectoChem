@@ -1,7 +1,0 @@
-name: dummy_ones
-file: data/pos_encoding/${dataset.name}/${.name}.pt
-dim: 8
-transforms:
-  DummyOnesPE:
-    attr_name: positional_encoding
-    dim_size: 8
