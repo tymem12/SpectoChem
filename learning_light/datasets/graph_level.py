@@ -5,10 +5,12 @@ import os
 from typing import Optional, Any
 from collections.abc import Sequence
 from sklearn.model_selection import train_test_split
-
-import random
+from learning_light.config import GraphDatasetConfig
 
 from sklearn.model_selection import GroupShuffleSplit
+
+import abc
+from pytorch_lightning import LightningDataModule
 
 import os
 import torch
@@ -23,6 +25,8 @@ from learning_light.utils.graph_level import split_dataset
 import torch.nn.functional as F
 from learning_light.datasets.cv_vis.tmqmg_star import TMQMGStarDataset
 from learning_light.datasets.cv_vis.standarizer_singleton import StandarizerSingletonF, StandarizerSingletonLambda
+
+
 
 def load_graph(
     root_dir: Path,
@@ -41,6 +45,25 @@ def load_graph(
         raise ValueError(f"Invalid dataset name in config: {name!r}")
 
     return dataset
+
+class GraphDataModule(LightningDataModule):
+    def __init__(self, dataset_config: GraphDatasetConfig, batch_size: int):
+        super().__init__()
+
+        self.config = dataset_config
+        self.batch_size = batch_size
+
+    @abc.abstractmethod
+    def train_dataloader(self) -> DataLoader:
+        pass
+
+    @abc.abstractmethod
+    def val_dataloader(self) -> DataLoader:
+        pass
+
+    @abc.abstractmethod
+    def test_dataloader(self) -> DataLoader:
+        pass
 
 class GraphLevelDataModule(GraphDataModule):
     def __init__(
