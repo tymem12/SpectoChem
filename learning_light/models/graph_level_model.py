@@ -12,11 +12,11 @@ from torch.optim import AdamW
 from torch_geometric.data import Data
 from torch_geometric.nn import global_mean_pool
 
-from gjepa.config import GraphLevelExperimentConfig
-from gjepa.models.encoders import GNNEncoder
-from gjepa.models.predictors import MLPClassifier, MLPRegressor
-from gjepa.utils.lr_scheduler import LinearWarmupCosineAnnealingLR  # type: ignore
-from gjepa.datasets.cv_vis.standarizer_singleton import StandarizerSingletonF, StandarizerSingletonLambda
+from learning_light.config import GraphLevelExperimentConfig
+from learning_light.models.encoders import GNNEncoder
+from learning_light.models.predictors import MLPClassifier, MLPRegressor
+from learning_light.utils.lr_scheduler import LinearWarmupCosineAnnealingLR  # type: ignore
+from learning_light.datasets.cv_vis.standarizer_singleton import StandarizerSingletonF, StandarizerSingletonLambda
 
 
 class SupervisedGraphLevelGNN(LightningModule):

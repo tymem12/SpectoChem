@@ -10,12 +10,12 @@ from pytorch_lightning import LightningDataModule, LightningModule, Trainer
 from rich import print
 
 from experiments.training_utils import save_metrics, setup_trainer
-from gjepa.config import GraphLevelExperimentConfig
+from learning_light.config import GraphLevelExperimentConfig
 
-from gjepa.datasets.graph_level import GraphLevelDataModule
+from learning_light.datasets.graph_level import GraphLevelDataModule
 
-from gjepa.utils import import_from_string
-from gjepa.utils.config import resolve_config
+from learning_light.utils import import_from_string
+from learning_light.utils.config import resolve_config
 
 torch.set_float32_matmul_precision("high")
 

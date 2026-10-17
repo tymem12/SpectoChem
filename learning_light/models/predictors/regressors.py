@@ -2,10 +2,10 @@ from abc import ABC
 from typing import Literal, Optional
 
 from torch import Tensor
-from gjepa.config import TaskType
-from gjepa.metrics.regression import get_default_regression_metrics
-from gjepa.models.predictors import PredictorBase, MLPPredictorMixin
-from gjepa.models.predictors.losses import get_regression_loss
+from learning_light.config import TaskType
+from learning_light.metrics.regression import get_default_regression_metrics
+from learning_light.models.predictors import PredictorBase, MLPPredictorMixin
+from learning_light.models.predictors.losses import get_regression_loss
 
 class RegressorBase(PredictorBase, ABC):
     def __init__(

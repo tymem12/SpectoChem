@@ -1,6 +1,6 @@
 from torch_geometric.data import Data
 from torch_geometric.transforms import BaseTransform
-from gjepa.utils.graph_level import calc_edge_weight
+from learning_light.utils.graph_level import calc_edge_weight
 from torch_cluster import radius_graph
 
 

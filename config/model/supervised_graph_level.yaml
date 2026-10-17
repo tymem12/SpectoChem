@@ -3,6 +3,6 @@ defaults:
   - _self_
 
 name: supervised
-type: gjepa.models.SupervisedGraphLevelGNN
+type: learning_light.models.SupervisedGraphLevelGNN
 transforms: { }
 reload_dataloaders_every_n_epochs: 0

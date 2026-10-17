@@ -1,4 +1,4 @@
-gnn_cls: gjepa.models.backbones.GINEEncoder
+gnn_cls: learning_light.models.backbones.GINEEncoder
 hidden_channels: 128
 num_layers: 3
 dropout: 0

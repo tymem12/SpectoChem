@@ -94,10 +94,10 @@ class GraphExperimentConfig(BaseModel, Generic[T, V], extra="forbid"):
 
 class ExperimentConfig(GraphExperimentConfig[DatasetConfig, GraphModelConfig]):
     model_cls_path_to_config_cls_mapping: ClassVar[dict[str, GraphModelConfig]] = {
-        "gjepa.models.SupervisedNodeLevelGNN": GraphModelConfig,
+        "learning_light.models.SupervisedNodeLevelGNN": GraphModelConfig,
     }
 
 class GraphLevelExperimentConfig(GraphExperimentConfig[GraphLevelDatasetConfig, GraphLevelModelConfig]):
     model_cls_path_to_config_cls_mapping: ClassVar[dict[str, GraphLevelModelConfig]] = {
-        "gjepa.models.SupervisedGraphLevelGNN": GraphLevelModelConfig,
+        "learning_light.models.SupervisedGraphLevelGNN": GraphLevelModelConfig,
     }

@@ -1,5 +1,5 @@
 all: quality
-check_dirs := gjepa experiments
+check_dirs := learning_light experiments
 # Check that source code meets quality standards
 
 quality:

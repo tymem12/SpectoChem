@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from torch_geometric.data import InMemoryDataset, Data
-from gjepa.utils.cv_vis import _is_number, _to_list, _parse_coords, _parse_atom_types
+from learning_light.utils.cv_vis import _is_number, _to_list, _parse_coords, _parse_atom_types
 
 
 class TMQMGStarDataset(InMemoryDataset):
@@ -74,7 +74,7 @@ class TMQMGStarDataset(InMemoryDataset):
 
         
         if self.load_representations:
-            from gjepa.utils.precomputed_embeddings import PrecomputedEmbeddings
+            from learning_light.utils.precomputed_embeddings import PrecomputedEmbeddings
             self.precomputed_embedings = PrecomputedEmbeddings(Path(self.load_representations))
             print(self.precomputed_embedings)
         super().__init__(root=root, transform=transform, pre_transform=pre_transform)

@@ -13,7 +13,7 @@ from pytorch_lightning.callbacks import (
 )
 from pytorch_lightning.loggers import Logger, TensorBoardLogger, WandbLogger
 
-from gjepa.config import TrainingConfig
+from learning_light.config import TrainingConfig
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 

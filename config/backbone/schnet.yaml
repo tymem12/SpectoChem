@@ -1,4 +1,4 @@
-gnn_cls: gjepa.models.backbones.SchNetEncoder
+gnn_cls: learning_light.models.backbones.SchNetEncoder
 hidden_channels: 128
 num_filters: 128
 num_interactions: 4

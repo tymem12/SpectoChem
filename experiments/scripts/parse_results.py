@@ -19,10 +19,10 @@ from sklearn.metrics import (
 from omegaconf import OmegaConf
 from lightning_fabric import seed_everything
 
-from gjepa.config import GraphLevelExperimentConfig
-from gjepa.datasets.graph_level import GraphLevelDataModule
-from gjepa.utils.config import resolve_config
-from gjepa.utils import spectral_loss
+from learning_light.config import GraphLevelExperimentConfig
+from learning_light.datasets.graph_level import GraphLevelDataModule
+from learning_light.utils.config import resolve_config
+from learning_light.utils import spectral_loss
 
 # --- EXPERIMENT CONFIGURATION ---
 SEEDS = [2137, 42, 1234]

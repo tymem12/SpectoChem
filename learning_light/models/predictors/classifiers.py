@@ -3,10 +3,10 @@ from typing import Literal, Optional
 
 from torch import Tensor
 
-from gjepa.config import TaskType
-from gjepa.metrics.classification import get_default_classification_metrics
-from gjepa.models.predictors import PredictorBase, MLPPredictorMixin
-from gjepa.models.predictors.losses import get_classification_loss
+from learning_light.config import TaskType
+from learning_light.metrics.classification import get_default_classification_metrics
+from learning_light.models.predictors import PredictorBase, MLPPredictorMixin
+from learning_light.models.predictors.losses import get_classification_loss
 
 
 class ClassifierBase(PredictorBase, ABC):

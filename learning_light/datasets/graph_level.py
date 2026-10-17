@@ -16,13 +16,13 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.data import Dataset, Data, Dataset, InMemoryDataset
 from torch_geometric.transforms import BaseTransform
 
-from gjepa.utils.pyg import create_transform
+from learning_light.utils.pyg import create_transform
 
-from gjepa.config import GraphLevelDatasetConfig
-from gjepa.utils.graph_level import split_dataset
+from learning_light.config import GraphLevelDatasetConfig
+from learning_light.utils.graph_level import split_dataset
 import torch.nn.functional as F
-from gjepa.datasets.cv_vis.tmqmg_star import TMQMGStarDataset
-from gjepa.datasets.cv_vis.standarizer_singleton import StandarizerSingletonF, StandarizerSingletonLambda
+from learning_light.datasets.cv_vis.tmqmg_star import TMQMGStarDataset
+from learning_light.datasets.cv_vis.standarizer_singleton import StandarizerSingletonF, StandarizerSingletonLambda
 
 def load_graph(
     root_dir: Path,

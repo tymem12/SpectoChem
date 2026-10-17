@@ -3,7 +3,7 @@ from typing import Any
 from torch import Tensor, nn
 from torch_geometric.data import Data
 
-from gjepa.utils import import_from_string
+from learning_light.utils import import_from_string
 
 
 class GNNEncoder(nn.Module):
