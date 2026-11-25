@@ -47,7 +47,7 @@ The repository implements training, evaluation, and LaTeX result aggregation acr
 
 ## Installation & Dependencies
 
-* **Python**: `3.11.6`
+* **Python**: `3.11.3`
 * **Core ML & Graph Stack**:
   * `torch==2.7.1`, `torch-geometric==2.6.1` (+ `pyg-lib`, `torch-scatter`, `torch-sparse`, `torch-cluster`, `torch-spline-conv`) — deep learning and 3D molecular graph operations.
   * `pytorch-lightning==2.5.2` — training loop, checkpointing, early stopping, and reproducibility (`seed_everything`).
