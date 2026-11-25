@@ -1,7 +1,7 @@
 #!/bin/bash
 
 MODELS=("schnet" "gine" "gat" "gcn")
-BLOCK_SPLITS=("none" "test")
+BLOCK_SPLITS=("345" "3test" "none")
 SEEDS=(2137 42 1234)
 
 DIR="$(dirname "$0")"
