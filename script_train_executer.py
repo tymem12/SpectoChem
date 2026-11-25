@@ -37,11 +37,13 @@ def run_cmd(cmd, log_info):
             result = subprocess.run(cmd, check=False)
             if result.returncode != 0:
                 print(f"Error: Command [{int_inter}] failed with code {result.returncode}")
+                sys.exit(result.returncode)  # <-- propagate failure to SLURM
         except Exception as e:
             print(f"Script Error on [{int_inter}]: {e}")
+            sys.exit(1)                      # <-- propagate failure to SLURM
     else:
         print(f"[{int_inter}] SKIPPING: {log_info}")
-    
+
     int_inter += 1
 
 def run_binary(model_name, seed, block_3_split):

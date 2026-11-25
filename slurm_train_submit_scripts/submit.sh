@@ -15,5 +15,6 @@ source .venv/bin/activate
 
 # "$@" passes all command-line arguments straight to the Python script
 PYTHONPATH=. python script_train_executer.py "$@"
-
+EXIT_CODE=$?
 deactivate
+exit $EXIT_CODE
