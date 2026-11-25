@@ -60,7 +60,7 @@ The repository implements training, evaluation, and LaTeX result aggregation acr
 
 ### Setup
 
-Create and activate a Python `3.11.6` virtual environment, then install either GPU (CUDA 12.8) or CPU dependencies via `Makefile`:
+Create and activate a Python `3.11.3` virtual environment, then install either GPU (CUDA 12.8) or CPU dependencies via `Makefile`:
 
 ```bash
 python3.11 -m venv .venv
